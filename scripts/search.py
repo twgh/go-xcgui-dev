@@ -185,46 +185,77 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     Returns:
         注释文本（只保留第一句简短描述）
     """
-    # 获取函数名
-    func_line = lines[func_line_idx]
-    m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)', func_line)
-    if not m:
-        return ""
-    
-    func_name = m.group(2)  # 例如：AddEvent_BnClick
-    
-    # 从函数行的前一行开始向上查找
+    # 收集函数行上方的所有注释行
+    comment_lines = []
     i = func_line_idx - 1
     
-    # 向上查找，跳过参数说明，查找函数描述
+    # 向上查找，收集所有注释行
     while i >= 0:
         stripped = lines[i].strip()
         if not stripped.startswith("//"):
             break
         
         line_content = stripped.lstrip("/").strip()
-        
-        # 如果是空注释行或分隔线，继续向上
-        if line_content == "" or "-----" in line_content:
-            i -= 1
-            continue
-        
-        # 如果包含函数名，就是函数描述
-        if func_name in line_content:
-            # 去掉函数名，只保留描述部分
-            comment = line_content.replace(func_name, "").strip()
-            
-            # 只保留第一句（以.结尾的部分）
-            if "." in comment:
-                first_sentence = comment[:comment.index(".") + 1]
-                return first_sentence.strip()
-            
-            return comment.strip()
-        
-        # 否则，是参数说明，继续向上
+        comment_lines.insert(0, line_content)
         i -= 1
     
-    return ""
+    if not comment_lines:
+        return ""
+    
+    # 从注释行中提取函数描述（过滤掉参数说明和空行）
+    desc_lines = []
+    for line in comment_lines:
+        # 跳过空行和分隔线
+        if line == "" or "-----" in line:
+            continue
+        
+        # 跳过参数说明
+        if _is_param_description(line):
+            continue
+        
+        # 是函数描述
+        desc_lines.append(line)
+    
+    if not desc_lines:
+        return ""
+    
+    # 合并描述行
+    comment = " ".join(desc_lines)
+    
+    # 去掉开头可能的函数名（如果有）
+    for sep in [" ", "\t"]:
+        parts = comment.split(sep, 1)
+        if len(parts) > 1 and parts[0] and not parts[0][0].islower():
+            # 可能是函数名，去掉它
+            comment = parts[1]
+            break
+    
+    # 只保留第一句（以.结尾的部分）
+    if "." in comment:
+        first_sentence = comment[:comment.index(".") + 1]
+        return first_sentence.strip()
+    
+    return comment.strip()
+
+
+def _is_param_description(line: str) -> bool:
+    """判断一行注释是否是参数说明.
+    
+    Args:
+        line: 注释内容（已去掉 // 前缀）
+        
+    Returns:
+        是否是参数说明
+    """
+    # 格式1: fn: 回调函数.
+    if line.startswith("fn:") or line.startswith("参数:"):
+        return True
+    
+    # 格式2: allowAddingMultiple: 允许添加多个回调函数
+    if re.match(r'^\w+:', line):
+        return True
+    
+    return False
 
 
 def _get_package_comment(file_path: Path) -> str:
