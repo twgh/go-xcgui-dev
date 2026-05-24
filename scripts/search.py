@@ -385,7 +385,7 @@ def search_const(keyword: str) -> None:
                 if line_type == "comment":
                     print(f"    {C_GRAY}{stripped_line}{C_RESET}")
                 elif line_type == "match":
-                    print(f"    {C_BOLD}{C_YELLOW}{stripped_line}{C_RESET}")
+                    print(f"    {stripped_line}")
             print()
 
     if found:
