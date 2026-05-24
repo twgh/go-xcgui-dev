@@ -850,8 +850,8 @@ def _build_inheritance_map() -> tuple[dict[str, list[str]], dict[str, str]]:
     inheritance_map = {}  # {结构体名: [直接父类]}
     file_map = {}  # {结构体名: 文件路径}
 
-    # 扫描 widget、window 和 objectbase 目录
-    search_dirs = ["widget", "window", "objectbase"]
+    # 扫描 widget、window、objectbase 和 edge 目录
+    search_dirs = ["widget", "window", "objectbase", "edge"]
     for subdir in search_dirs:
         dir_path = XCGUI_SRC / subdir
         if not dir_path.exists():
@@ -903,8 +903,8 @@ def _build_inheritance_map() -> tuple[dict[str, list[str]], dict[str, str]]:
     return full_chains, file_map
 
 
-def _find_addevent_functions(go_file: Path) -> list[tuple[int, str, str]]:
-    """在 Go 文件中查找所有 AddEvent_ 开头的函数.
+def _find_event_functions(go_file: Path) -> list[tuple[int, str, str]]:
+    """在 Go 文件中查找所有事件函数 (AddEvent_ 或 Event_ 开头).
 
     Args:
         go_file: Go 文件路径
@@ -919,9 +919,10 @@ def _find_addevent_functions(go_file: Path) -> list[tuple[int, str, str]]:
         return results
 
     for i, line in enumerate(lines):
-        # 匹配 AddEvent_ 开头的函数定义
+        # 匹配 AddEvent_ 或 Event_ 开头的函数定义
         # func (b *Button) AddEvent_BnClick(...)
-        m = re.search(r'func\s+\(\w+\s+\*\w+\)\s+(AddEvent_\w+)\s*\(', line)
+        # func (w *WebView) Event_NavigationCompleted(...)
+        m = re.search(r'func\s+\(\w+\s+\*\w+\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
         if m:
             func_name = m.group(1)
             # 获取函数上方的注释
@@ -931,8 +932,51 @@ def _find_addevent_functions(go_file: Path) -> list[tuple[int, str, str]]:
     return results
 
 
+def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str]) -> list[tuple[str, int, str, str]]:
+    """在指定目录下搜索所有事件函数 (AddEvent_ 或 Event_ 开头)，且接收者是目标结构体之一.
+
+    Args:
+        dir_path: 目录路径
+        target_structs: 目标结构体名列表
+
+    Returns:
+        [(结构体名, 行号, 函数名, 注释), ...]
+    """
+    results = []
+    
+    if not dir_path.exists():
+        return results
+    
+    # 遍历目录下所有 Go 文件
+    for go_file in sorted(dir_path.rglob("*.go")):
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+            continue
+        
+        try:
+            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+        
+        for i, line in enumerate(lines):
+            # 匹配 AddEvent_ 或 Event_ 开头的函数定义
+            # func (w *WebViewEventImpl) Event_NavigationCompleted(...)
+            m = re.search(r'func\s+\((\w+)\s+\*(\w+)\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
+            if m:
+                receiver_var = m.group(1)  # 接收者变量名
+                receiver_type = m.group(2)  # 接收者类型名
+                func_name = m.group(3)
+                
+                # 检查接收者类型是否在目标结构体列表中
+                if receiver_type in target_structs:
+                    # 获取函数上方的注释
+                    comment = _get_func_comment(lines, i)
+                    results.append((receiver_type, i + 1, func_name, comment))
+    
+    return results
+
+
 def _list_object_events(obj_name: str) -> None:
-    """列出指定对象及其继承链上的所有 AddEvent_ 事件.
+    """列出指定对象及其继承链上的所有事件函数 (AddEvent_ 或 Event_ 开头).
 
     Args:
         obj_name: 对象名 (不区分大小写)
@@ -962,6 +1006,9 @@ def _list_object_events(obj_name: str) -> None:
     # 收集所有事件
     all_events = []  # [(结构体名, 行号, 函数名, 注释)]
 
+    # 按目录分组处理（避免重复搜索）
+    processed_dirs = set()
+    
     for struct_name in all_structs:
         if struct_name not in file_map:
             continue
@@ -969,13 +1016,21 @@ def _list_object_events(obj_name: str) -> None:
         go_file = Path(file_map[struct_name])
         if not go_file.exists():
             continue
-
-        events = _find_addevent_functions(go_file)
-        for line_no, func_name, comment in events:
-            all_events.append((struct_name, line_no, func_name, comment))
+        
+        # 获取文件所在目录
+        dir_path = go_file.parent
+        
+        # 如果已经处理过这个目录，跳过
+        if str(dir_path) in processed_dirs:
+            continue
+        processed_dirs.add(str(dir_path))
+        
+        # 在当前目录及其子目录中搜索事件函数
+        events = _find_event_functions_in_dir(dir_path, all_structs)
+        all_events.extend(events)
 
     if not all_events:
-        color_print(f"  未找到 {target_struct} 及其父类的 AddEvent_ 事件", C_YELLOW)
+        color_print(f"  未找到 {target_struct} 及其父类的事件函数", C_YELLOW)
         return
 
     # 计算最大函数名长度（用于对齐注释）
