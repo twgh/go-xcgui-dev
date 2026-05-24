@@ -14,10 +14,12 @@
     python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
     python scripts/search.py const Window_Style        # 搜索常量关键词 (单个关键词)
     python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
+    python scripts/search.py const 阴影窗口             # 用中文注释搜索常量 (单个关键词)
+    python scripts/search.py const 窗口/最小化          # 用中文注释搜索常量 (多个关键词用 / 分割)
     python scripts/search.py event BnClick             # 搜索事件函数名关键词 (单个关键词)
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词 (单个关键词)
-    python scripts/search.py event 鼠标/双击            # 搜索事件中文注释关键词 (多个关键词用 / 分割)
+    python scripts/search.py event 窗口/鼠标光标        # 搜索事件中文注释关键词 (多个关键词用 / 分割)
     python scripts/search.py example TabBar            # 搜索示例关键词
 """
 
@@ -267,9 +269,18 @@ def search_const(keyword: str) -> None:
 
     搜索范围:
         - source/xcgui/xcc/  所有常量文件
+
+    关键词规则:
+        - 用 / 分割多个关键词，常量必须同时匹配所有关键词
+        - 支持在常量名和注释中搜索
     """
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索常量: \"{keyword}\"", C_CYAN, bold=True)
+    if len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
@@ -277,12 +288,6 @@ def search_const(keyword: str) -> None:
     if not xcc_dir.exists():
         color_print(f"  错误: xcc 目录不存在: {xcc_dir}", C_RED)
         return
-
-    # 编译正则表达式 - 支持精确匹配和前缀匹配
-    # 使用 re.escape 处理特殊字符
-    pattern_const = re.compile(rf'^\s*(\w*{re.escape(keyword)}\w*)\s', re.IGNORECASE)
-    pattern_comment = re.compile(rf'^\s*//.*{re.escape(keyword)}', re.IGNORECASE)
-    pattern_exact = re.compile(rf'^\s*{re.escape(keyword)}\b', re.IGNORECASE)
 
     for go_file in sorted(xcc_dir.rglob("*.go")):
         # 跳过 deprecated.go 和 doc.go 文件
@@ -295,17 +300,17 @@ def search_const(keyword: str) -> None:
 
         lines = text.splitlines()
         in_const_block = False
-        
+
         for i, line in enumerate(lines):
             stripped = line.strip()
-            
+
             # 追踪是否在 const ( ) 块中
             if "const (" in stripped:
                 in_const_block = True
             if in_const_block and stripped == ")":
                 in_const_block = False
                 continue
-            
+
             # 判断是否为常量相关行：
             # 1. 在 const 块中
             # 2. 行以 // 开头（注释）
@@ -315,13 +320,13 @@ def search_const(keyword: str) -> None:
                 stripped.startswith("//") or
                 ("=" in stripped and not stripped.startswith("//"))
             )
-            
+
             if not is_const_line:
                 continue
-            
-            # 尝试匹配
-            m = pattern_exact.search(line) or pattern_const.search(line) or pattern_comment.search(line)
-            if not m:
+
+            # 检查所有关键词是否都匹配（在常量名或注释中）
+            line_lower = line.lower()
+            if not all(kw.lower() in line_lower for kw in keywords):
                 continue
 
             relative = go_file.relative_to(PROJECT_ROOT)
@@ -355,15 +360,25 @@ def search_event(keyword: str) -> None:
     搜索策略:
         - 如果关键词包含中文：先在事件常量注释中搜索，再找对应函数
         - 如果关键词是英文：直接搜索函数名/常量名
+
+    关键词规则:
+        - 用 / 分割多个关键词，必须同时匹配所有关键词
+        - 中文关键词：搜索事件注释
+        - 英文关键词：搜索函数名/常量名
     """
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索事件: \"{keyword}\"", C_CYAN, bold=True)
+    if len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
 
     # ── 判断是否为中文搜索 ──────────────────────────
-    is_chinese = bool(re.search(r'[\u4e00-\u9fff]', keyword))
+    is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
     if is_chinese:
         # ── 中文搜索：注释 → 常量 → 函数 ─────────
@@ -385,7 +400,8 @@ def search_event(keyword: str) -> None:
                 continue
 
             for i, line in enumerate(lines):
-                if keyword.lower() not in line.lower():
+                # 检查所有中文关键词是否都在行中（不区分大小写）
+                if not all(kw.lower() in line.lower() for kw in keywords):
                     continue
 
                 # 提取常量名
@@ -458,26 +474,21 @@ def search_event(keyword: str) -> None:
                             print()
 
     else:
-        # ── 英文搜索：直接匹配 ──────────────────────
-        # 智能处理关键词：提取事件名
-        event_name = keyword
-        if event_name.startswith("AddEvent_"):
-            event_name = event_name[9:]
-        elif event_name.startswith("XE_"):
-            event_name = event_name[3:]
-        elif event_name.startswith("WM_"):
-            event_name = event_name[3:]
-
-        patterns = [
-            re.compile(rf'\b{re.escape(keyword)}\b', re.IGNORECASE),
-            re.compile(rf'AddEvent_{re.escape(event_name)}', re.IGNORECASE),
-            re.compile(rf'Event_{re.escape(event_name)}', re.IGNORECASE),
-            re.compile(rf'XE_{re.escape(event_name)}', re.IGNORECASE),
-            re.compile(rf'WM_{re.escape(event_name)}', re.IGNORECASE),
-            re.compile(rf'XWM_{re.escape(event_name)}', re.IGNORECASE),
-        ]
-
+        # ── 英文搜索：直接匹配事件相关定义 ─────────
+        # 只匹配事件相关定义：
+        # 1. AddEvent_XXX 函数定义
+        # 2. Event_XXX 函数定义
+        # 3. 事件常量（XE_、XWM_、WM_ 等）
         search_dirs = ["xc", "widget", "window", "xcc"]
+
+        # 编译事件相关模式
+        event_patterns = [
+            re.compile(r'AddEvent_\w+', re.IGNORECASE),
+            re.compile(r'Event_\w+', re.IGNORECASE),
+            re.compile(r'\bXE_\w+'),
+            re.compile(r'\bXWM_\w+'),
+            re.compile(r'\bWM_\w+'),
+        ]
 
         for go_file in find_go_files(XCGUI_SRC, search_dirs):
             try:
@@ -490,14 +501,23 @@ def search_event(keyword: str) -> None:
                 if go_file.name.endswith("_test.go"):
                     continue
 
-                matched_text = None
-                for pat in patterns:
+                # 只处理事件相关的行
+                is_event_line = any(pat.search(line) for pat in event_patterns)
+                if not is_event_line:
+                    continue
+
+                # 检查所有关键词是否都在行中（不区分大小写）
+                line_lower = line.lower()
+                if not all(kw.lower() in line_lower for kw in keywords):
+                    continue
+
+                # 找到匹配的文本用于高亮
+                matched_text = ""
+                for pat in event_patterns:
                     m = pat.search(line)
                     if m:
                         matched_text = m.group(0)
                         break
-                if not matched_text:
-                    continue
 
                 found += 1
                 relative = go_file.relative_to(PROJECT_ROOT)
@@ -508,7 +528,7 @@ def search_event(keyword: str) -> None:
                     stripped = ctx_line.strip()
                     if stripped.startswith("//"):
                         print(f"    {C_GRAY}{stripped}{C_RESET}")
-                    elif matched_text in stripped:
+                    elif matched_text and matched_text in stripped:
                         highlighted = stripped.replace(matched_text, f"{C_BOLD}{C_YELLOW}{matched_text}{C_RESET}")
                         print(f"    {highlighted}")
                     elif "func" in stripped:
