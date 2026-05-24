@@ -186,7 +186,7 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
         func_line_idx: 函数声明行的索引 (0-indexed)
 
     Returns:
-        注释文本（只保留第一句简短描述）
+        注释文本（合并多行注释，过滤掉参数说明）
     """
     # 收集函数行上方的所有注释行
     comment_lines = []
@@ -247,11 +247,8 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
                 break
             # 如果不是英文（如中文），保留整个注释
     
-    # 只保留第一句（以.结尾的部分）
-    if "." in comment:
-        first_sentence = comment[:comment.index(".") + 1]
-        return first_sentence.strip()
-    
+    # 返回完整注释，不再截断
+    # 原有逻辑会在第一个 "." 处截断，但注释中可能包含函数名如 "common.UintPtrToString"
     return comment.strip()
 
 
