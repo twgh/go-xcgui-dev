@@ -123,10 +123,7 @@ def search_func(keyword: str) -> None:
     """搜索函数定义.
 
     搜索范围:
-        - source/xcgui/xc/     底层 C API (X* 函数)
-        - source/xcgui/widget/ 控件方法
-        - source/xcgui/window/ 窗口方法
-        - source/xcgui/ani/    动画方法
+        - source/xcgui/ 下除 xcc/ 外的所有子目录
     """
     patterns = [
         # 底层 C API: func XBtn_Create(...) int {
@@ -135,9 +132,11 @@ def search_func(keyword: str) -> None:
         re.compile(rf'^\s*func\s+\(.*?\)\s+(\w*{keyword}\w*)\(', re.IGNORECASE),
     ]
 
-    search_dirs = ["xc", "widget", "window", "ani", "app", "adapter",
-                   "bkmanager", "bkobj", "svg", "drawx", "font",
-                   "imagex", "res", "tf", "common", "objectbase"]
+    # 动态获取所有子目录，排除 xcc
+    search_dirs = [
+        d.name for d in XCGUI_SRC.iterdir()
+        if d.is_dir() and not d.name.startswith(".") and d.name != "xcc"
+    ]
 
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索函数: \"{keyword}\"", C_CYAN, bold=True)
