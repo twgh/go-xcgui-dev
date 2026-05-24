@@ -279,16 +279,30 @@ def search_event(keyword: str) -> None:
     color_print(f"  搜索事件: \"{keyword}\"", C_CYAN, bold=True)
     color_print(f"{'='*60}\n", C_CYAN)
 
-    found = 0
+    # 智能处理关键词：提取事件名
+    # 例如: "AddEvent_BnClick" -> "BnClick", "BNCLICK" -> "BNCLICK"
+    event_name = keyword
+    if event_name.startswith("AddEvent_"):
+        event_name = event_name[len("AddEvent_"):]
+    elif event_name.startswith("XE_"):
+        event_name = event_name[len("XE_"):]
+
+    # 构建搜索模式
+    # 1. 完整匹配: AddEvent_BnClick, XE_BNCLICK
+    # 2. 方法名: EventClicks, EventClick
+    # 3. 常量: XE_BNCLICK, XE_BnClick
+    # 4. 注释: 事件相关
     patterns = [
-        re.compile(rf'(\w*AddEvent\w*{keyword}\w*)', re.IGNORECASE),
-        re.compile(rf'(\w*_{keyword}\w*)', re.IGNORECASE),  # 常量匹配
-        re.compile(rf'(\w*{keyword}Event\w*)', re.IGNORECASE),
-        re.compile(rf'(\w*onEvent\w*{keyword}\w*)', re.IGNORECASE),
-        re.compile(rf'//.*事件.*{keyword}', re.IGNORECASE),  # 注释中的事件说明
+        re.compile(rf'\b{re.escape(keyword)}\b', re.IGNORECASE),  # 完整匹配关键词
+        re.compile(rf'AddEvent_{re.escape(event_name)}', re.IGNORECASE),  # AddEvent_XXX
+        re.compile(rf'Event{re.escape(event_name)}', re.IGNORECASE),  # EventXXX 方法
+        re.compile(rf'XE_{re.escape(event_name)}', re.IGNORECASE),  # XE_XXX 常量
+        re.compile(rf'onEvent{re.escape(event_name)}', re.IGNORECASE),  # onEventXXX
+        re.compile(rf'//.*事件.*{re.escape(event_name)}', re.IGNORECASE),  # 注释
     ]
 
     search_dirs = ["xc", "widget", "window", "xcc"]
+    found = 0
 
     for go_file in find_go_files(XCGUI_SRC, search_dirs):
         try:
@@ -298,30 +312,34 @@ def search_event(keyword: str) -> None:
 
         lines = text.splitlines()
         for i, line in enumerate(lines):
-            matched = None
+            # 跳过测试文件
+            if go_file.name.endswith("_test.go"):
+                continue
+
+            matched_text = None
             for pat in patterns:
                 m = pat.search(line)
                 if m:
-                    matched = m.group(1)
+                    matched_text = m.group(0)
                     break
-            if not matched:
+            if not matched_text:
                 continue
 
             relative = go_file.relative_to(PROJECT_ROOT)
             found += 1
             color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
 
-            # 显示上下文
-            start = max(0, i - 2)
-            end = min(len(lines), i + 2)
-            for j in range(start, end):
-                stripped = lines[j].strip()
+            # 显示上下文（包含完整函数）
+            context = extract_func_block(go_file, i + 1)
+            for ctx_line in context.splitlines():
+                stripped = ctx_line.strip()
                 if stripped.startswith("//"):
                     print(f"    {C_GRAY}{stripped}{C_RESET}")
-                elif j == i:
-                    # 高亮匹配的关键词
-                    highlighted = stripped.replace(matched, f"{C_BOLD}{C_YELLOW}{matched}{C_RESET}")
+                elif matched_text in stripped:
+                    highlighted = stripped.replace(matched_text, f"{C_BOLD}{C_YELLOW}{matched_text}{C_RESET}")
                     print(f"    {highlighted}")
+                elif "func" in stripped:
+                    print(f"    {C_BOLD}{stripped}{C_RESET}")
                 elif stripped == "":
                     continue
                 else:
