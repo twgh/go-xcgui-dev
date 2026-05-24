@@ -39,19 +39,46 @@ XCGUI_SRC = SOURCE_DIR / "xcgui"
 EXAMPLE_SRC = SOURCE_DIR / "xcgui-example"
 
 # ── ANSI 颜色 ─────────────────────────────────────────────
-C_RESET = "\033[0m"
-C_BOLD = "\033[1m"
-C_CYAN = "\033[36m"
-C_GREEN = "\033[32m"
-C_YELLOW = "\033[33m"
-C_MAGENTA = "\033[35m"
-C_RED = "\033[31m"
-C_GRAY = "\033[90m"
+ENABLE_COLOR = False  # 默认关闭颜色输出（避免增加 token 消耗）
+
+# 颜色常量（会根据 ENABLE_COLOR 动态设置）
+C_RESET = ""
+C_BOLD = ""
+C_CYAN = ""
+C_GREEN = ""
+C_YELLOW = ""
+C_MAGENTA = ""
+C_RED = ""
+C_GRAY = ""
+
+
+def _enable_color(enable: bool = True):
+    """启用或禁用颜色输出."""
+    global ENABLE_COLOR, C_RESET, C_BOLD, C_CYAN, C_GREEN, C_YELLOW, C_MAGENTA, C_RED, C_GRAY
+    ENABLE_COLOR = enable
+    if enable:
+        C_RESET = "\033[0m"
+        C_BOLD = "\033[1m"
+        C_CYAN = "\033[36m"
+        C_GREEN = "\033[32m"
+        C_YELLOW = "\033[33m"
+        C_MAGENTA = "\033[35m"
+        C_RED = "\033[31m"
+        C_GRAY = "\033[90m"
+    else:
+        C_RESET = ""
+        C_BOLD = ""
+        C_CYAN = ""
+        C_GREEN = ""
+        C_YELLOW = ""
+        C_MAGENTA = ""
+        C_RED = ""
+        C_GRAY = ""
 
 
 def color_print(text: str, color: str = "", bold: bool = False):
-    """带颜色的打印，Windows 兼容性处理."""
-    if not sys.stdout.isatty():
+    """带颜色的打印."""
+    if not ENABLE_COLOR:
         print(text)
         return
     prefix = C_BOLD if bold else ""
@@ -885,8 +912,17 @@ def main():
         default="",
         help="搜索关键词",
     )
+    parser.add_argument(
+        "--color",
+        action="store_true",
+        help="启用彩色输出",
+    )
 
     args = parser.parse_args()
+
+    # 如果指定了 --color，启用颜色输出
+    if args.color:
+        _enable_color(True)
 
     # 验证路径
     if not SOURCE_DIR.exists():
