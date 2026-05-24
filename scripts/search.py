@@ -60,24 +60,63 @@ def find_go_files(base: Path, subdirs: list[str] | None = None) -> list[Path]:
 
 
 def extract_func_block(file_path: Path, line_no: int) -> str:
-    """提取函数的完整签名（多行函数声明）."""
+    """提取函数的完整注释和函数体.
+
+    向上查找完整的注释块（连续的 // 行），向下匹配函数体的大括号。
+    注意：line_no 是 1-indexed（从 enumerate(..., 1) 传入）。
+    """
     lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    # 从当前行向上找注释，向下找函数体开始
-    start = max(0, line_no - 5)
-    # 从函数声明行向下找到 { 或下一个 func
-    end = min(len(lines), line_no + 1)
-    # 尝试多行函数签名：检查后续行是否有未闭合的括号
-    for i in range(line_no, min(len(lines), line_no + 10)):
-        if "{" in lines[i]:
+    total_lines = len(lines)
+    # 转换为 0-indexed
+    func_idx = line_no - 1
+
+    # ── 向上查找注释起始位置 ──────────────────────────
+    # 从函数声明行的前一行开始向上查找
+    comment_start = func_idx
+    if func_idx > 0:
+        i = func_idx - 1
+        while i >= 0:
+            stripped = lines[i].strip()
+            # 空行表示注释块结束
+            if stripped == "":
+                comment_start = i + 1
+                break
+            # 注释行，继续向上
+            if stripped.startswith("//") or stripped.startswith("/*"):
+                comment_start = i
+                i -= 1
+                continue
+            # 非注释非空行，注释块结束
+            else:
+                comment_start = i + 1
+                break
+        else:
+            # 到达文件开头
+            comment_start = 0
+
+    # ── 向下查找函数体结束位置 ────────────────────────
+    brace_count = 0
+    found_open = False
+    end = func_idx  # 至少包含函数声明行
+
+    for i in range(func_idx, total_lines):
+        line = lines[i]
+        for ch in line:
+            if ch == '{':
+                brace_count += 1
+                found_open = True
+            elif ch == '}':
+                brace_count -= 1
+
+        # 找到匹配的函数体结束
+        if found_open and brace_count == 0:
             end = i
             break
-        if i + 1 < len(lines) and re.match(r'^\s*func\b', lines[i + 1]):
-            end = i
-            break
-        if ")" in lines[i] and "(" not in lines[i]:
-            end = i
-            break
-    return "\n".join(lines[start:end + 1])
+    else:
+        # 未找到匹配的大括号，使用简单策略：取函数声明后20行
+        end = min(total_lines - 1, func_idx + 20)
+
+    return "\n".join(lines[comment_start:end + 1])
 
 
 def search_func(keyword: str) -> None:
