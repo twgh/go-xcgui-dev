@@ -27,6 +27,7 @@
     python scripts/search.py list examples             # 列出所有示例
     python scripts/search.py list events               # 列出所有事件函数名
     python scripts/search.py list events button        # 列出对象所有事件函数名
+    python scripts/search.py list funcs button         # 列出对象所有方法名
 """
 
 import argparse
@@ -975,6 +976,129 @@ def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str]) -> l
     return results
 
 
+def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str]) -> list[tuple[str, int, str, str]]:
+    """在指定目录下搜索所有方法函数，且接收者是目标结构体之一.
+
+    Args:
+        dir_path: 目录路径
+        target_structs: 目标结构体名列表
+
+    Returns:
+        [(结构体名, 行号, 函数名, 注释), ...]
+    """
+    results = []
+    
+    if not dir_path.exists():
+        return results
+    
+    # 遍历目录下所有 Go 文件
+    for go_file in sorted(dir_path.rglob("*.go")):
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+            continue
+        
+        try:
+            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+        
+        for i, line in enumerate(lines):
+            # 匹配所有方法定义
+            # func (b *Button) MethodName(...)
+            m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)\s*\(', line)
+            if m:
+                receiver_type = m.group(1)
+                func_name = m.group(2)
+                
+                # 检查接收者类型是否在目标结构体列表中
+                if receiver_type in target_structs:
+                    # 只显示公开方法（首字母大写）
+                    if func_name[0].isupper():
+                        # 获取函数上方的注释
+                        comment = _get_func_comment(lines, i)
+                        results.append((receiver_type, i + 1, func_name, comment))
+    
+    return results
+
+
+def _list_object_funcs(obj_name: str) -> None:
+    """列出指定对象及其继承链上的所有公开方法.
+
+    Args:
+        obj_name: 对象名 (不区分大小写)
+    """
+    # 构建继承关系映射
+    inheritance_chain, file_map = _build_inheritance_map()
+
+    # 不区分大小写查找对象
+    target_struct = None
+    for name in file_map.keys():
+        if name.lower() == obj_name.lower():
+            target_struct = name
+            break
+
+    if not target_struct:
+        color_print(f"  错误: 未找到对象 '{obj_name}'", C_RED)
+        color_print(f"  提示: 可用对象请运行: python scripts/search.py list widgets", C_GRAY)
+        return
+
+    # 获取继承链
+    chain = inheritance_chain.get(target_struct, [])
+    all_structs = [target_struct] + chain
+
+    color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
+    print()
+
+    # 收集所有方法
+    all_funcs = []  # [(结构体名, 行号, 函数名, 注释)]
+
+    # 按目录分组处理（避免重复搜索）
+    processed_dirs = set()
+    
+    for struct_name in all_structs:
+        if struct_name not in file_map:
+            continue
+
+        go_file = Path(file_map[struct_name])
+        if not go_file.exists():
+            continue
+        
+        # 获取文件所在目录
+        dir_path = go_file.parent
+        
+        # 如果已经处理过这个目录，跳过
+        if str(dir_path) in processed_dirs:
+            continue
+        processed_dirs.add(str(dir_path))
+        
+        # 在当前目录及其子目录中搜索所有方法
+        funcs = _find_all_functions_in_dir(dir_path, all_structs)
+        all_funcs.extend(funcs)
+
+    if not all_funcs:
+        color_print(f"  未找到 {target_struct} 及其父类的方法", C_YELLOW)
+        return
+
+    # 计算最大函数名长度（用于对齐注释）
+    max_func_len = max(len(func_name) for _, _, func_name, _ in all_funcs)
+
+    # 按结构体分组显示
+    current_struct = None
+    for struct_name, line_no, func_name, comment in all_funcs:
+        if struct_name != current_struct:
+            current_struct = struct_name
+            color_print(f"  {C_BOLD}{C_CYAN}【{struct_name}】{C_RESET}")
+
+        # 显示方法名和注释（两列格式，注释对齐）
+        padding = " " * (max_func_len - len(func_name))
+        if comment:
+            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+        else:
+            rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
+            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
+
+    color_print(f"  共找到 {len(all_funcs)} 个方法", C_YELLOW)
+
+
 def _list_object_events(obj_name: str) -> None:
     """列出指定对象及其继承链上的所有事件函数 (AddEvent_ 或 Event_ 开头).
 
@@ -1264,6 +1388,14 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
             # 列出指定对象的所有事件 (含继承)
             _list_object_events(extra_arg)
 
+    elif subcommand == "funcs":
+        if not extra_arg:
+            color_print(f"  错误: funcs 命令需要指定对象名", C_RED)
+            color_print(f"  用法: python scripts/search.py list funcs <对象名>", C_GRAY)
+            return
+        # 列出指定对象的所有方法 (含继承)
+        _list_object_funcs(extra_arg)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1283,6 +1415,7 @@ def main():
   list examples      列出所有示例
   list events       列出所有事件类型
   list events <对象名>  列出指定对象的所有事件 (含继承)
+  list funcs <对象名>   列出指定对象的所有方法 (含继承)
 
 示例:
   python scripts/search.py func XBtn_Create
@@ -1294,6 +1427,7 @@ def main():
   python scripts/search.py list widgets
   python scripts/search.py list windows
   python scripts/search.py list events button
+  python scripts/search.py list funcs button
         """,
     )
     parser.add_argument(
