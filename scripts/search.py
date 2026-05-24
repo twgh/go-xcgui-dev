@@ -282,6 +282,9 @@ def search_const(keyword: str) -> None:
 
     搜索范围:
         - source/xcgui/xcc/  所有常量文件
+        - source/xcgui/edge/consts.go
+        - source/xcgui/edge/IStream.go
+        - source/xcgui/edge/webview2_iids.go
 
     关键词规则:
         - 用 / 分割多个关键词，常量必须同时匹配所有关键词
@@ -297,15 +300,32 @@ def search_const(keyword: str) -> None:
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
-    xcc_dir = XCGUI_SRC / "xcc"
-    if not xcc_dir.exists():
-        color_print(f"  错误: xcc 目录不存在: {xcc_dir}", C_RED)
-        return
 
-    for go_file in sorted(xcc_dir.rglob("*.go")):
-        # 跳过 deprecated.go 和 doc.go 文件
-        if go_file.name in {"deprecated.go", "doc.go"}:
-            continue
+    # ── 搜索 xcc 目录 ──────────────────────────────
+    xcc_dir = XCGUI_SRC / "xcc"
+    go_files = []
+
+    if xcc_dir.exists():
+        for go_file in sorted(xcc_dir.rglob("*.go")):
+            # 跳过 deprecated.go 和 doc.go 文件
+            if go_file.name in {"deprecated.go", "doc.go"}:
+                continue
+            go_files.append(go_file)
+
+    # ── 搜索 edge 目录下的指定文件 ──────────────────
+    edge_dir = XCGUI_SRC / "edge"
+    edge_const_files = [
+        edge_dir / "consts.go",
+        edge_dir / "IStream.go",
+        edge_dir / "webview2_iids.go",
+    ]
+
+    for edge_file in edge_const_files:
+        if edge_file.exists():
+            go_files.append(edge_file)
+
+    # ── 搜索所有收集到的文件 ────────────────────────
+    for go_file in go_files:
         try:
             text = go_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
@@ -313,6 +333,9 @@ def search_const(keyword: str) -> None:
 
         lines = text.splitlines()
         in_const_block = False
+
+        # 判断是否为中文搜索
+        is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -324,18 +347,24 @@ def search_const(keyword: str) -> None:
                 in_const_block = False
                 continue
 
-            # 判断是否为常量相关行：
-            # 1. 在 const 块中
-            # 2. 行以 // 开头（注释）
-            # 3. 行包含 = 且不是注释（常量赋值）
-            is_const_line = (
-                in_const_block or
-                stripped.startswith("//") or
-                ("=" in stripped and not stripped.startswith("//"))
+            # 判断是否为注释行
+            is_comment_line = stripped.startswith("//")
+
+            # 判断是否为常量定义行（非注释，有 = 或在 const 块中且非注释）
+            is_const_def = (
+                (in_const_block and not is_comment_line) or
+                ("=" in stripped and not is_comment_line)
             )
 
-            if not is_const_line:
-                continue
+            # 根据搜索类型决定是否处理此行
+            if is_chinese:
+                # 中文搜索：处理常量定义行和注释行
+                if not is_const_def and not is_comment_line:
+                    continue
+            else:
+                # 英文搜索：只处理常量定义行（不匹配纯注释行）
+                if not is_const_def:
+                    continue
 
             # 检查所有关键词是否都匹配（在常量名或注释中）
             line_lower = line.lower()
