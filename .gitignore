@@ -6,3 +6,4 @@
 .codebuddy/
 .workbuddy/
 source/
+__pycache__/
