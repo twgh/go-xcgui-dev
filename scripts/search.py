@@ -718,10 +718,238 @@ def search_example(keyword: str) -> None:
         color_print(f"  未找到匹配 \"{keyword}\" 的示例", C_RED)
 
 
-def search_list(subcommand: str) -> None:
-    """列出指定子命令下的所有文件/内容."""
+def _parse_struct_inheritance(go_file: Path) -> dict[str, str]:
+    """解析 Go 文件中的结构体嵌入关系.
+
+    从 Go 文件中提取所有结构体定义及其嵌入的父结构体。
+    只处理当前 package 中的类型定义。
+
+    Args:
+        go_file: Go 文件路径
+
+    Returns:
+        字典 {子结构体名: 父结构体名}
+        例如: {"Button": "Element", "Element": "Widget"}
+    """
+    inheritance = {}
+    try:
+        text = go_file.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return inheritance
+
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # 匹配: type Button struct {
+        m = re.match(r'^type\s+(\w+)\s+struct\s*\{', stripped)
+        if not m:
+            continue
+
+        child = m.group(1)
+        # 向后查找嵌入的父结构体
+        # 查找范围: 从当前行到匹配的结束大括号
+        brace_count = 0
+        found_open = False
+        for j in range(i, min(i + 50, len(lines))):  # 最多查找50行
+            for ch in lines[j]:
+                if ch == '{':
+                    brace_count += 1
+                    found_open = True
+                elif ch == '}':
+                    brace_count -= 1
+
+            # 在结构体定义范围内查找嵌入字段
+            if found_open and brace_count == 0:
+                # 已到达结构体结束
+                break
+
+            # 检查当前行是否是嵌入字段 (大写字母开头, 后面是空格或换行)
+            if j > i:  # 不是 type 定义行
+                embed_line = lines[j].strip()
+                # 嵌入字段格式: Element 或 Element `json:"-"`
+                # 嵌入字段特点: 只有类型名, 没有字段名
+                # 匹配带包名前缀的嵌入: objectbase.Widget
+                # 匹配不带包名前缀的嵌入: Element
+                embed_m = re.match(r'^([\w.]+)(?:\s+`.+`)?\s*$', embed_line)
+                if embed_m:
+                    full_name = embed_m.group(1)
+                    # 提取结构体名 (去掉包名前缀)
+                    parent = full_name.split('.')[-1]
+                    # 排除基本类型和空结构体
+                    if parent and parent[0].isupper() and parent not in ["int", "string", "bool", "byte"]:
+                        inheritance[child] = parent
+                        break  # 找到直接父类就停止
+
+    return inheritance
+
+
+def _build_inheritance_map() -> tuple[dict[str, list[str]], dict[str, str]]:
+    """构建完整的继承关系映射.
+
+    Returns:
+        (inheritance_map, file_map):
+        - inheritance_map: {结构体名: [继承链]}
+        - file_map: {结构体名: 所在文件路径}
+    """
+    inheritance_map = {}  # {结构体名: [直接父类]}
+    file_map = {}  # {结构体名: 文件路径}
+
+    # 扫描 widget、window 和 objectbase 目录
+    search_dirs = ["widget", "window", "objectbase"]
+    for subdir in search_dirs:
+        dir_path = XCGUI_SRC / subdir
+        if not dir_path.exists():
+            continue
+
+        for go_file in sorted(dir_path.rglob("*.go")):
+            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+                continue
+
+            # 记录结构体到文件的映射
+            try:
+                text = go_file.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+
+            # 提取所有结构体名
+            for m in re.finditer(r'^type\s+(\w+)\s+struct\s*\{', text, re.MULTILINE):
+                struct_name = m.group(1)
+                file_map[struct_name] = str(go_file)
+
+            # 解析继承关系
+            inherits = _parse_struct_inheritance(go_file)
+            inheritance_map.update(inherits)
+
+    # 构建完整继承链
+    def _get_chain(name: str, visited: set[str] | None = None) -> list[str]:
+        """获取完整的继承链."""
+        if visited is None:
+            visited = set()
+        if name in visited:
+            return []
+        visited.add(name)
+
+        if name not in inheritance_map:
+            return []
+
+        parent = inheritance_map[name]
+        chain = [parent]
+        chain.extend(_get_chain(parent, visited))
+        return chain
+
+    # 为每个结构体计算完整继承链
+    full_chains = {}
+    for struct_name in set(list(inheritance_map.keys()) + list(file_map.keys())):
+        chain = _get_chain(struct_name)
+        if chain:
+            full_chains[struct_name] = chain
+
+    return full_chains, file_map
+
+
+def _find_addevent_functions(go_file: Path) -> list[tuple[int, str, str]]:
+    """在 Go 文件中查找所有 AddEvent_ 开头的函数.
+
+    Args:
+        go_file: Go 文件路径
+
+    Returns:
+        [(行号, 函数名, 注释), ...]
+    """
+    results = []
+    try:
+        lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return results
+
+    for i, line in enumerate(lines):
+        # 匹配 AddEvent_ 开头的函数定义
+        # func (b *Button) AddEvent_BnClick(...)
+        m = re.search(r'func\s+\(\w+\s+\*\w+\)\s+(AddEvent_\w+)\s*\(', line)
+        if m:
+            func_name = m.group(1)
+            # 获取函数上方的注释
+            comment = _get_func_comment(lines, i)
+            results.append((i + 1, func_name, comment))
+
+    return results
+
+
+def _list_object_events(obj_name: str) -> None:
+    """列出指定对象及其继承链上的所有 AddEvent_ 事件.
+
+    Args:
+        obj_name: 对象名 (不区分大小写)
+    """
+    # 构建继承关系映射
+    inheritance_chain, file_map = _build_inheritance_map()
+
+    # 不区分大小写查找对象
+    target_struct = None
+    for name in file_map.keys():
+        if name.lower() == obj_name.lower():
+            target_struct = name
+            break
+
+    if not target_struct:
+        color_print(f"  错误: 未找到对象 '{obj_name}'", C_RED)
+        color_print(f"  提示: 可用对象请运行: python scripts/search.py list widgets", C_GRAY)
+        return
+
+    # 获取继承链
+    chain = inheritance_chain.get(target_struct, [])
+    all_structs = [target_struct] + chain
+
+    color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
+    print()
+
+    # 收集所有事件
+    all_events = []  # [(结构体名, 行号, 函数名, 注释)]
+
+    for struct_name in all_structs:
+        if struct_name not in file_map:
+            continue
+
+        go_file = Path(file_map[struct_name])
+        if not go_file.exists():
+            continue
+
+        events = _find_addevent_functions(go_file)
+        for line_no, func_name, comment in events:
+            all_events.append((struct_name, line_no, func_name, comment))
+
+    if not all_events:
+        color_print(f"  未找到 {target_struct} 及其父类的 AddEvent_ 事件", C_YELLOW)
+        return
+
+    # 按结构体分组显示
+    current_struct = None
+    for struct_name, line_no, func_name, comment in all_events:
+        if struct_name != current_struct:
+            current_struct = struct_name
+            color_print(f"  {C_BOLD}{C_CYAN}【{struct_name}】{C_RESET}")
+
+        # 显示注释和函数名
+        if comment:
+            print(f"    {C_GRAY}// {comment}{C_RESET}")
+        rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
+        print(f"    {C_GREEN}{func_name}{C_RESET}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
+        print()
+
+    color_print(f"  共找到 {len(all_events)} 个事件", C_YELLOW)
+
+
+def search_list(subcommand: str, extra_arg: str = "") -> None:
+    """列出指定子命令下的所有文件/内容.
+
+    Args:
+        subcommand: 子命令 (widgets/packages/examples/events)
+        extra_arg: 额外参数 (如对象名)
+    """
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  列出: {subcommand}", C_CYAN, bold=True)
+    if extra_arg:
+        color_print(f"  对象: {extra_arg}", C_CYAN)
     color_print(f"{'='*60}\n", C_CYAN)
 
     if subcommand == "widgets":
@@ -820,58 +1048,62 @@ def search_list(subcommand: str) -> None:
         color_print(f"\n  {C_YELLOW}共 {found} 个包{C_RESET}")
 
     elif subcommand == "events":
-        # 列出所有可用事件类型
-        search_dirs = ["widget", "window", "edge"]
+        if not extra_arg:
+            # 列出所有可用事件类型
+            search_dirs = ["widget", "window", "edge"]
 
-        # 按类型分类事件（存储完整形式）
-        widget_events = set()  # 存储 AddEvent_XXX
-        window_events = set()  # 存储 AddEvent_XXX
-        edge_events = set()  # 存储 Event_XXX
+            # 按类型分类事件（存储完整形式）
+            widget_events = set()  # 存储 AddEvent_XXX
+            window_events = set()  # 存储 AddEvent_XXX
+            edge_events = set()  # 存储 Event_XXX
 
-        # 正则模式
-        pattern_addevent = re.compile(r'\bAddEvent_(\w+)')
-        pattern_event = re.compile(r'\bEvent_(\w+)')
+            # 正则模式
+            pattern_addevent = re.compile(r'\bAddEvent_(\w+)')
+            pattern_event = re.compile(r'\bEvent_(\w+)')
 
-        for go_file in find_go_files(XCGUI_SRC, search_dirs):
-            try:
-                text = go_file.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                continue
+            for go_file in find_go_files(XCGUI_SRC, search_dirs):
+                try:
+                    text = go_file.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    continue
 
-            # 判断文件属于哪个目录
-            rel_path = go_file.relative_to(XCGUI_SRC)
-            parts = rel_path.parts
+                # 判断文件属于哪个目录
+                rel_path = go_file.relative_to(XCGUI_SRC)
+                parts = rel_path.parts
 
-            if parts[0] == "widget":
-                for m in pattern_addevent.finditer(text):
-                    widget_events.add(f"AddEvent_{m.group(1)}")
-            elif parts[0] == "window":
-                for m in pattern_addevent.finditer(text):
-                    window_events.add(f"AddEvent_{m.group(1)}")
-            elif parts[0] == "edge":
-                for m in pattern_event.finditer(text):
-                    edge_events.add(f"Event_{m.group(1)}")
+                if parts[0] == "widget":
+                    for m in pattern_addevent.finditer(text):
+                        widget_events.add(f"AddEvent_{m.group(1)}")
+                elif parts[0] == "window":
+                    for m in pattern_addevent.finditer(text):
+                        window_events.add(f"AddEvent_{m.group(1)}")
+                elif parts[0] == "edge":
+                    for m in pattern_event.finditer(text):
+                        edge_events.add(f"Event_{m.group(1)}")
 
-        total = len(widget_events) + len(window_events) + len(edge_events)
-        color_print(f"  共 {total} 种事件类型:\n", C_YELLOW)
+            total = len(widget_events) + len(window_events) + len(edge_events)
+            color_print(f"  共 {total} 种事件类型:\n", C_YELLOW)
 
-        if widget_events:
-            color_print(f"  {C_BOLD}元素事件:{C_RESET}", C_CYAN)
-            for ev in sorted(widget_events):
-                color_print(f"    {ev}", C_GREEN)
-            print()
-
-        if window_events:
-            color_print(f"  {C_BOLD}窗口事件:{C_RESET}", C_CYAN)
-            for ev in sorted(window_events):
-                color_print(f"    {ev}", C_GREEN)
-            print()
-
-        if edge_events:
-            color_print(f"  {C_BOLD}WebView 事件:{C_RESET}", C_CYAN)
-            for ev in sorted(edge_events):
+            if widget_events:
+                color_print(f"  {C_BOLD}元素事件:{C_RESET}", C_CYAN)
+                for ev in sorted(widget_events):
                     color_print(f"    {ev}", C_GREEN)
-            print()
+                print()
+
+            if window_events:
+                color_print(f"  {C_BOLD}窗口事件:{C_RESET}", C_CYAN)
+                for ev in sorted(window_events):
+                    color_print(f"    {ev}", C_GREEN)
+                print()
+
+            if edge_events:
+                color_print(f"  {C_BOLD}WebView 事件:{C_RESET}", C_CYAN)
+                for ev in sorted(edge_events):
+                        color_print(f"    {ev}", C_GREEN)
+                print()
+        else:
+            # 列出指定对象的所有事件 (含继承)
+            _list_object_events(extra_arg)
 
 
 def main():
@@ -880,16 +1112,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 子命令:
-  func <keyword>    搜索函数定义 (xc/widget/window/ani 等)
-  const <keyword>   搜索常量定义 (xcc)
-  event <keyword>   搜索事件相关代码 (AddEvent / 事件常量)
-  example <keyword> 搜索示例代码 (xcgui-example)
+  func <keyword>       搜索函数定义 (xc/widget/window/ani 等)
+  const <keyword>      搜索常量定义 (xcc)
+  event <keyword>      搜索事件相关代码 (AddEvent / 事件常量)
+  example <keyword>    搜索示例代码 (xcgui-example)
 
 列表子命令:
-  list widgets      列出所有可用控件
-  list packages     列出所有源码包
-  list examples     列出所有示例
+  list widgets       列出所有可用控件
+  list packages      列出所有源码包
+  list examples      列出所有示例
   list events       列出所有事件类型
+  list events <对象名>  列出指定对象的所有事件 (含继承)
 
 示例:
   python scripts/search.py func XBtn_Create
@@ -899,6 +1132,7 @@ def main():
   python scripts/search.py event BnClick
   python scripts/search.py example TabBar
   python scripts/search.py list widgets
+  python scripts/search.py list events button
         """,
     )
     parser.add_argument(
@@ -907,10 +1141,9 @@ def main():
         help="搜索命令",
     )
     parser.add_argument(
-        "keyword",
-        nargs="?",
-        default="",
-        help="搜索关键词",
+        "args",
+        nargs="*",
+        help="命令参数 (keyword 或多个参数)",
     )
     parser.add_argument(
         "--color",
@@ -930,35 +1163,30 @@ def main():
         color_print("请确保在项目根目录 (go-xcgui-dev) 下运行此脚本", C_RED)
         sys.exit(1)
 
-    if args.command == "func":
-        if not args.keyword:
-            color_print("错误: func 命令需要关键词参数", C_RED)
-            sys.exit(1)
-        search_func(args.keyword)
-
-    elif args.command == "const":
-        if not args.keyword:
-            color_print("错误: const 命令需要关键词参数", C_RED)
-            sys.exit(1)
-        search_const(args.keyword)
-
-    elif args.command == "event":
-        if not args.keyword:
-            color_print("错误: event 命令需要关键词参数", C_RED)
-            sys.exit(1)
-        search_event(args.keyword)
-
-    elif args.command == "example":
-        if not args.keyword:
-            color_print("错误: example 命令需要关键词参数", C_RED)
-            sys.exit(1)
-        search_example(args.keyword)
-
-    elif args.command == "list":
-        if not args.keyword:
+    # 处理参数
+    if args.command == "list":
+        # list 命令: list <subcommand> [extra_arg]
+        if len(args.args) == 0:
             color_print("错误: list 命令需要子类型 (widgets/packages/examples/events)", C_RED)
             sys.exit(1)
-        search_list(args.keyword)
+        subcommand = args.args[0].lower()
+        extra_arg = args.args[1] if len(args.args) > 1 else ""
+        search_list(subcommand, extra_arg)
+    else:
+        # 其他命令: <command> <keyword>
+        if len(args.args) == 0:
+            color_print(f"错误: {args.command} 命令需要关键词参数", C_RED)
+            sys.exit(1)
+        keyword = " ".join(args.args)
+
+        if args.command == "func":
+            search_func(keyword)
+        elif args.command == "const":
+            search_const(keyword)
+        elif args.command == "event":
+            search_event(keyword)
+        elif args.command == "example":
+            search_example(keyword)
 
 
 if __name__ == "__main__":
