@@ -205,25 +205,22 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     if not comment_lines:
         return ""
     
-    # 从注释行中提取函数描述（过滤掉参数说明和空行）
-    desc_lines = []
+    # 只取第一行非空的注释作为简短描述
+    # Go 注释约定：第一行是简短描述，后面是详细说明
+    comment = ""
     for line in comment_lines:
-        # 跳过空行和分隔线
-        if line == "" or "-----" in line:
+        # 跳过空行
+        if not line:
             continue
-        
-        # 跳过参数说明
+        # 跳过参数说明行
         if _is_param_description(line):
             continue
-        
-        # 是函数描述
-        desc_lines.append(line)
+        # 找到第一行有效注释，作为描述
+        comment = line
+        break
     
-    if not desc_lines:
+    if not comment:
         return ""
-    
-    # 合并描述行
-    comment = " ".join(desc_lines)
     
     # 获取函数名
     func_line = lines[func_line_idx]
@@ -247,8 +244,6 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
                 break
             # 如果不是英文（如中文），保留整个注释
     
-    # 返回完整注释，不再截断
-    # 原有逻辑会在第一个 "." 处截断，但注释中可能包含函数名如 "common.UintPtrToString"
     return comment.strip()
 
 
