@@ -21,8 +21,8 @@
     python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释关键词 (单个关键词)
     python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
     python scripts/search.py example TabBar            # 搜索示例关键词
-    python scripts/search.py list widgets              # 列出 widget 包所有对象
-    python scripts/search.py list windows              # 列出 window 包所有对象
+    python scripts/search.py list widgets              # 列出 widget 包所有公开对象
+    python scripts/search.py list windows              # 列出 window 包所有公开对象
     python scripts/search.py list packages             # 列出所有源码包
     python scripts/search.py list examples             # 列出所有示例
     python scripts/search.py list events               # 列出所有事件函数名
