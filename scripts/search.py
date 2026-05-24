@@ -8,18 +8,18 @@
     python scripts/search.py example <keyword>   # 搜索示例代码
 
 示例:
-    python scripts/search.py func Center               # 搜索函数名关键词
+    python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
+    python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py func 最大化                # 用中文注释搜索函数 (单个关键词)
     python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
     python scripts/search.py const Window_Style        # 搜索常量关键词
     python scripts/search.py event AddEvent_BnClick    # 搜索事件函数名
-    python scripts/search.py event BnClick             # 搜索事件函数名关键词(不区分大小写)
+    python scripts/search.py event BnClick             # 搜索事件函数名关键词
     python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词
     python scripts/search.py example TabBar            # 搜索示例关键词
 """
 
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
@@ -154,35 +154,44 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     return " ".join(comment_lines)
 
 
+def _extract_func_name(line: str) -> str | None:
+    """从函数定义行提取函数名.
+
+    Args:
+        line: 函数定义行
+
+    Returns:
+        函数名，如果不是函数定义行则返回 None
+    """
+    # 普通函数: func XBtn_Create(...)
+    m = re.match(r'^\s*func\s+(\w+)\s*\(', line)
+    if m:
+        return m.group(1)
+
+    # 方法: func (b *Button) SetText(...)
+    m = re.match(r'^\s*func\s+\(.*?\)\s+(\w+)\s*\(', line)
+    if m:
+        return m.group(1)
+
+    return None
+
+
 def search_func(keyword: str) -> None:
     """搜索函数定义.
 
     搜索范围:
         - source/xcgui/ 下除 xcc/ 外的所有子目录
 
-    中文关键词行为:
-        - 用 / 分割多个关键词
-        - 只搜索函数注释中的匹配（因为函数名是英文）
+    关键词规则:
+        - 用 / 分割多个关键词，函数必须同时匹配所有关键词
+        - 中文关键词：搜索函数注释
+        - 英文关键词：搜索函数名
     """
     # ── 判断是否为中文搜索 ──────────────────────────
     is_chinese = bool(re.search(r'[\u4e00-\u9fff]', keyword))
 
     # 分割关键词
     keywords = [k.strip() for k in keyword.split('/') if k.strip()]
-
-    # 编译正则表达式（仅英文搜索使用）
-    if is_chinese:
-        # 中文搜索：匹配所有函数定义，后续通过注释过滤
-        patterns = [
-            re.compile(r'^\s*func\s+\w+\('),          # 普通函数
-            re.compile(r'^\s*func\s+\(.*?\)\s+\w+\('),  # 方法
-        ]
-    else:
-        # 英文搜索：精确匹配函数名
-        patterns = [
-            re.compile(rf'^\s*func\s+(\w*{re.escape(keyword)}\w*)\(', re.IGNORECASE),
-            re.compile(rf'^\s*func\s+\(.*?\)\s+(\w*{re.escape(keyword)}\w*)\(', re.IGNORECASE),
-        ]
 
     # 动态获取所有子目录，排除 xcc
     search_dirs = [
@@ -192,7 +201,7 @@ def search_func(keyword: str) -> None:
 
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索函数: \"{keyword}\"", C_CYAN, bold=True)
-    if is_chinese and len(keywords) > 1:
+    if len(keywords) > 1:
         color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
     color_print(f"{'='*60}\n", C_CYAN)
 
@@ -208,27 +217,22 @@ def search_func(keyword: str) -> None:
             # 函数声明行索引 (0-indexed)
             func_idx = i - 1
 
+            # 提取函数名
+            func_name = _extract_func_name(line)
+            if func_name is None:
+                continue
+
             if is_chinese:
-                # ── 中文搜索：匹配所有函数，再通过注释过滤 ──
-                # 先检查是否是函数定义行
-                is_func_line = any(pat.search(line) for pat in patterns)
-                if not is_func_line:
-                    continue
-
-                # 获取函数注释
+                # ── 中文搜索：通过注释过滤 ──
                 comment = _get_func_comment(lines, func_idx)
-
-                # 检查所有关键词是否都在注释中
+                # 检查所有关键词是否都在注释中（不区分大小写）
                 if not all(kw in comment for kw in keywords):
                     continue
             else:
-                # ── 英文搜索：直接匹配函数名 ──
-                matched = False
-                for pat in patterns:
-                    if pat.search(line):
-                        matched = True
-                        break
-                if not matched:
+                # ── 英文搜索：在函数定义行中搜索（含接收者类型），不区分大小写 ──
+                # 例如 "func (b *Button) SetText(...)" 可匹配 Button 和 Text
+                line_lower = line.lower()
+                if not all(kw.lower() in line_lower for kw in keywords):
                     continue
 
             # 提取上下文
