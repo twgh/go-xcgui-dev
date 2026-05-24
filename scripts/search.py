@@ -12,10 +12,12 @@
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py func 最大化                # 用中文注释搜索函数 (单个关键词)
     python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
-    python scripts/search.py const Window_Style        # 搜索常量关键词
-    python scripts/search.py event AddEvent_BnClick    # 搜索事件函数名
-    python scripts/search.py event BnClick             # 搜索事件函数名关键词
-    python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词
+    python scripts/search.py const Window_Style        # 搜索常量关键词 (单个关键词)
+    python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
+    python scripts/search.py event BnClick             # 搜索事件函数名关键词 (单个关键词)
+    python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
+    python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词 (单个关键词)
+    python scripts/search.py event 鼠标/双击            # 搜索事件中文注释关键词 (多个关键词用 / 分割)
     python scripts/search.py example TabBar            # 搜索示例关键词
 """
 
