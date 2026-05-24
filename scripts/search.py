@@ -343,11 +343,6 @@ def search_event(keyword: str) -> None:
                     else:
                         event_suffix = const_name
 
-                    # 事件函数名可能的大小写变体：WINDPROC / WindProc / windproc
-                    # 例如：XWM_WINDPROC -> AddEvent_WindProc 或 AddEvent_WINDPROC
-                    suffix_lower = event_suffix.lower()
-                    suffix_cap = event_suffix.capitalize() if len(event_suffix) > 1 else event_suffix
-
                     # 优先匹配函数定义（AddEvent_/Event_），再匹配常量引用
                     patterns = [
                         re.compile(rf'\bAddEvent_{re.escape(event_suffix)}\b', re.IGNORECASE),
