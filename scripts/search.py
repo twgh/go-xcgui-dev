@@ -745,18 +745,56 @@ def search_list(subcommand: str) -> None:
     elif subcommand == "events":
         # 列出所有可用事件类型
         search_dirs = ["widget", "window", "edge"]
-        events = set()
-        pattern = re.compile(r'AddEvent_(\w+)', re.IGNORECASE)
+
+        # 按类型分类事件（存储完整形式）
+        widget_events = set()  # 存储 AddEvent_XXX
+        window_events = set()  # 存储 AddEvent_XXX
+        edge_events = set()  # 存储 Event_XXX
+
+        # 正则模式
+        pattern_addevent = re.compile(r'\bAddEvent_(\w+)')
+        pattern_event = re.compile(r'\bEvent_(\w+)')
+
         for go_file in find_go_files(XCGUI_SRC, search_dirs):
             try:
                 text = go_file.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 continue
-            for m in pattern.finditer(text):
-                events.add(m.group(1))
-        color_print(f"  共 {len(events)} 种事件类型:\n", C_YELLOW)
-        for ev in sorted(events):
-            color_print(f"    AddEvent_{ev}", C_GREEN)
+
+            # 判断文件属于哪个目录
+            rel_path = go_file.relative_to(XCGUI_SRC)
+            parts = rel_path.parts
+
+            if parts[0] == "widget":
+                for m in pattern_addevent.finditer(text):
+                    widget_events.add(f"AddEvent_{m.group(1)}")
+            elif parts[0] == "window":
+                for m in pattern_addevent.finditer(text):
+                    window_events.add(f"AddEvent_{m.group(1)}")
+            elif parts[0] == "edge":
+                for m in pattern_event.finditer(text):
+                    edge_events.add(f"Event_{m.group(1)}")
+
+        total = len(widget_events) + len(window_events) + len(edge_events)
+        color_print(f"  共 {total} 种事件类型:\n", C_YELLOW)
+
+        if widget_events:
+            color_print(f"  {C_BOLD}元素事件:{C_RESET}", C_CYAN)
+            for ev in sorted(widget_events):
+                color_print(f"    {ev}", C_GREEN)
+            print()
+
+        if window_events:
+            color_print(f"  {C_BOLD}窗口事件:{C_RESET}", C_CYAN)
+            for ev in sorted(window_events):
+                color_print(f"    {ev}", C_GREEN)
+            print()
+
+        if edge_events:
+            color_print(f"  {C_BOLD}WebView 事件:{C_RESET}", C_CYAN)
+            for ev in sorted(edge_events):
+                    color_print(f"    {ev}", C_GREEN)
+            print()
 
 
 def main():
