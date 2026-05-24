@@ -178,6 +178,58 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     return " ".join(comment_lines)
 
 
+def _get_package_comment(file_path: Path) -> str:
+    """提取文件中的包注释（package 语句上方的多行注释），合并为一行.
+
+    查找 package main 或 package xxx 语句上方的所有连续 // 注释行，
+    将多行注释合并为一行（用空格连接，清理多余空白）。
+
+    Args:
+        file_path: Go 文件路径
+
+    Returns:
+        合并后的包注释字符串，如果没有找到则返回空字符串
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+
+    lines = text.split('\n')
+
+    # 找到 package 语句的行号
+    pkg_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('package '):
+            pkg_idx = i
+            break
+
+    if pkg_idx is None or pkg_idx == 0:
+        return ""
+
+    # 向上查找所有连续的 // 注释行
+    comment_lines = []
+    i = pkg_idx - 1
+    while i >= 0:
+        stripped = lines[i].strip()
+        if stripped.startswith('//'):
+            # 去掉 // 前缀，保留注释内容
+            content = stripped[2:].strip()
+            if content:
+                comment_lines.insert(0, content)
+            i -= 1
+        else:
+            # 非注释行（包括空行），停止
+            break
+
+    if not comment_lines:
+        return ""
+
+    # 合并多行注释，用空格连接，并清理多余空白
+    return re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
+
+
 def _extract_func_name(line: str) -> str | None:
     """从函数定义行提取函数名.
 
@@ -681,10 +733,8 @@ def search_list(subcommand: str) -> None:
                         count = len(go_files)
                         desc = ""
                         if go_files:
-                            text = go_files[0].read_text(encoding="utf-8", errors="replace")
-                            m = re.search(r'//\s*(.+?)\.', text)
-                            if m:
-                                desc = m.group(1).strip()
+                            # 使用辅助函数获取合并后的包注释
+                            desc = _get_package_comment(go_files[0])
                         color_print(f"    {ex_dir.name:35} {C_GRAY}{desc} ({count} 文件){C_RESET}")
 
     elif subcommand == "packages":
