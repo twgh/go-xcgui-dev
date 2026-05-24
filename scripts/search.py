@@ -46,7 +46,7 @@ def color_print(text: str, color: str = "", bold: bool = False):
     print(f"{prefix}{color}{text}{suffix}")
 
 
-def find_go_files(base: Path, subdirs: list[str] = None) -> list[Path]:
+def find_go_files(base: Path, subdirs: list[str] | None = None) -> list[Path]:
     """查找指定子目录下的所有 .go 文件."""
     files = []
     if subdirs:
@@ -318,9 +318,9 @@ def search_example(keyword: str) -> None:
 
         lines = text.splitlines()
         matched_lines = []
+        relative = go_file.relative_to(PROJECT_ROOT)
         for i, line in enumerate(lines):
             if pattern.search(line):
-                relative = go_file.relative_to(PROJECT_ROOT)
                 matched_lines.append((i + 1, line))
 
         if matched_lines:
