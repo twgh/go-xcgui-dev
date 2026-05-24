@@ -797,8 +797,9 @@ def _parse_struct_inheritance(go_file: Path) -> dict[str, str]:
                     full_name = embed_m.group(1)
                     # 提取结构体名 (去掉包名前缀)
                     parent = full_name.split('.')[-1]
-                    # 排除基本类型和空结构体
-                    if parent and parent[0].isupper() and parent not in ["int", "string", "bool", "byte"]:
+                    # 排除基本类型、空结构体和内置类型
+                    basic_types = ["int", "string", "bool", "byte", "rune", "float32", "float64", "int32", "int64", "uint32", "uint64", "uintptr"]
+                    if parent and parent not in basic_types:
                         inheritance[child] = parent
                         break  # 找到直接父类就停止
 
