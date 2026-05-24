@@ -17,7 +17,7 @@ agent_created: false
 2. **源码即真理**：`source/xcgui/` 下的 `.go` 文件是唯一的 API 真相来源，`source/xcgui-example/` 是唯一的用法示例来源。
 3. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
 4. **双重 API 层**：xcgui 有两层 API —— `widget/window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
-5. **xcgui 仅支持 Windows 平台**，不能使用 grep/ripgrep 等 Linux 命令行工具搜索源码。**必须使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你也可以尝试自行使用合适方式去检索 `source/xcgui/` 和 `source/xcgui-example/`目录。
+5. **xcgui 仅支持 Windows 平台**，不能使用 grep/ripgrep 等 Linux 命令行工具搜索源码。**必须使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你也可以尝试缩减/更换搜索关键词。
 
 ## 信息检索工作流
 
@@ -58,7 +58,7 @@ python scripts/search.py list events         # 列出所有可用事件类型
 
 ### Step 2：阅读确认
 
-搜索到候选后，用 `read` 工具打开目标文件（路径已在搜索结果中给出），确认：
+搜索到候选后，用 `read` 工具打开目标文件（路径与行号已在搜索结果中给出），确认：
 - 完整函数签名（多行参数、返回值类型）
 - 中文注释（`// 函数_描述` 和参数说明）
 - 相关常量的实际值
@@ -225,8 +225,6 @@ func XBtn_Create(x, y, cx, cy int32, name string, hParent int) int {
 
 ### 构造函数模式
 
-每个控件都有 5 种创建方式：
-
 ```go
 // 1. 直接创建
 func NewButton(x, y, cx, cy int32, name string, hParent int) *Button
@@ -295,9 +293,9 @@ func(hEle int, pbHandled *bool) int           // MouseStay
 func(hEle, hEleStay int, pbHandled *bool) int // MouseLeave
 ```
 
-### bool 参数可选化约定(封装新API时)
+### bool 参数可选化约定
 
-将最后一个 `bool` 参数改为 `variadic ...bool`：
+最后一个 `bool` 参数为 `variadic ...bool`：
 
 ```go
 // 如果是 Enable 类型的函数, 那么使其默认为 true
@@ -346,7 +344,7 @@ func main() {
 | 包 | 用途 | 导入路径 |
 |----|------|---------|
 | `xc` | 底层 C API，所有以 `X` 开头的函数 | `github.com/twgh/xcgui/xc` |
-| `xcc` | 所有常量和枚举 | `github.com/twgh/xcgui/xcc` |
+| `xcc` | 所有炫彩常量和枚举 | `github.com/twgh/xcgui/xcc` |
 | `widget` | 控件高级封装 | `github.com/twgh/xcgui/widget` |
 | `window` | 窗口高级封装 | `github.com/twgh/xcgui/window` |
 | `app` | 应用生命周期 | `github.com/twgh/xcgui/app` |
