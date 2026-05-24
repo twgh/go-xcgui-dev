@@ -1229,9 +1229,13 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
                 if parts[0] == "widget":
                     for m in pattern_addevent.finditer(text):
                         widget_events.add(f"AddEvent_{m.group(1)}")
+                    for m in pattern_event.finditer(text):
+                        widget_events.add(f"Event_{m.group(1)}")                        
                 elif parts[0] == "window":
                     for m in pattern_addevent.finditer(text):
                         window_events.add(f"AddEvent_{m.group(1)}")
+                    for m in pattern_event.finditer(text):
+                        window_events.add(f"Event_{m.group(1)}")                    
                 elif parts[0] == "edge":
                     for m in pattern_event.finditer(text):
                         edge_events.add(f"Event_{m.group(1)}")
