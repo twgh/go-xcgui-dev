@@ -643,20 +643,27 @@ def search_list(subcommand: str) -> None:
 
     if subcommand == "widgets":
         widget_dir = XCGUI_SRC / "widget"
+        found = 0
         if widget_dir.exists():
             for f in sorted(widget_dir.glob("*.go")):
                 if f.name.endswith("_test.go") or f.name == "doc.go" or f.name == "deprecated.go":
                     continue
-                name = f.stem
-                # 读取结构体注释 (格式: // 描述文字. 或 // Button 按钮控件.)
+                # 读取文件提取类型名和注释
                 text = f.read_text(encoding="utf-8", errors="replace")
-                # 匹配注释: 可选英文类型名 + 描述 + 句号
-                m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
-                if m:
-                    desc = m.group(1).strip()
-                    color_print(f"  {C_BOLD}{C_GREEN}{name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
+                # 提取类型名: type Xxx struct {
+                type_m = re.search(r'^type\s+(\w+)\s+struct\s*\{', text, re.MULTILINE)
+                if not type_m:
+                    continue
+                type_name = type_m.group(1)
+                found += 1
+                # 匹配注释: // 描述文字. 或 // Button 按钮控件.
+                comment_m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
+                if comment_m:
+                    desc = comment_m.group(1).strip()
+                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
                 else:
-                    color_print(f"  {C_BOLD}{C_GREEN}{name:20}{C_RESET}")
+                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET}")
+        color_print(f"\n  {C_YELLOW}共 {found} 个控件{C_RESET}")
 
     elif subcommand == "examples":
         if EXAMPLE_SRC.exists():
