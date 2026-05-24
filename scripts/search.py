@@ -183,26 +183,48 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
         func_line_idx: 函数声明行的索引 (0-indexed)
 
     Returns:
-        注释文本（多个注释行用空格连接）
+        注释文本（只保留第一句简短描述）
     """
-    comment_lines = []
+    # 获取函数名
+    func_line = lines[func_line_idx]
+    m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)', func_line)
+    if not m:
+        return ""
+    
+    func_name = m.group(2)  # 例如：AddEvent_BnClick
+    
     # 从函数行的前一行开始向上查找
     i = func_line_idx - 1
+    
+    # 向上查找，跳过参数说明，查找函数描述
     while i >= 0:
         stripped = lines[i].strip()
-        if stripped.startswith("//"):
-            # 去掉 // 前缀，保留注释内容
-            comment_lines.insert(0, stripped.lstrip("/").strip())
-            i -= 1
-        elif stripped == "":
-            # 空行：如果在注释块中间，继续向上；如果还没找到注释，停止
-            if comment_lines:
-                break
-            i -= 1
-        else:
-            # 非注释非空行，停止
+        if not stripped.startswith("//"):
             break
-    return " ".join(comment_lines)
+        
+        line_content = stripped.lstrip("/").strip()
+        
+        # 如果是空注释行或分隔线，继续向上
+        if line_content == "" or "-----" in line_content:
+            i -= 1
+            continue
+        
+        # 如果包含函数名，就是函数描述
+        if func_name in line_content:
+            # 去掉函数名，只保留描述部分
+            comment = line_content.replace(func_name, "").strip()
+            
+            # 只保留第一句（以.结尾的部分）
+            if "." in comment:
+                first_sentence = comment[:comment.index(".") + 1]
+                return first_sentence.strip()
+            
+            return comment.strip()
+        
+        # 否则，是参数说明，继续向上
+        i -= 1
+    
+    return ""
 
 
 def _get_package_comment(file_path: Path) -> str:
@@ -922,6 +944,9 @@ def _list_object_events(obj_name: str) -> None:
         color_print(f"  未找到 {target_struct} 及其父类的 AddEvent_ 事件", C_YELLOW)
         return
 
+    # 计算最大函数名长度（用于对齐注释）
+    max_func_len = max(len(func_name) for _, _, func_name, _ in all_events)
+
     # 按结构体分组显示
     current_struct = None
     for struct_name, line_no, func_name, comment in all_events:
@@ -929,12 +954,13 @@ def _list_object_events(obj_name: str) -> None:
             current_struct = struct_name
             color_print(f"  {C_BOLD}{C_CYAN}【{struct_name}】{C_RESET}")
 
-        # 显示注释和函数名
+        # 显示事件名和注释（两列格式，注释对齐）
+        padding = " " * (max_func_len - len(func_name))
         if comment:
-            print(f"    {C_GRAY}// {comment}{C_RESET}")
-        rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
-        print(f"    {C_GREEN}{func_name}{C_RESET}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
-        print()
+            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+        else:
+            rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
+            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
 
     color_print(f"  共找到 {len(all_events)} 个事件", C_YELLOW)
 
