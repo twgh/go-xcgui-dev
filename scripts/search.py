@@ -691,7 +691,7 @@ def search_list(subcommand: str) -> None:
 
     elif subcommand == "events":
         # 列出所有可用事件类型
-        search_dirs = ["xc", "widget", "window"]
+        search_dirs = ["widget", "window", "edge"]
         events = set()
         pattern = re.compile(r'AddEvent_(\w+)', re.IGNORECASE)
         for go_file in find_go_files(XCGUI_SRC, search_dirs):
