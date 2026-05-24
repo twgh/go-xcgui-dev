@@ -387,6 +387,10 @@ def search_func(keyword: str) -> None:
             if func_name is None:
                 continue
 
+            # 跳过未导出的函数（小写字母开头）
+            if not func_name[0].isupper():
+                continue
+
             if is_chinese:
                 # ── 中文搜索：通过注释过滤 ──
                 comment = _get_func_comment(lines, func_idx)
