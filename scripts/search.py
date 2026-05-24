@@ -346,19 +346,46 @@ def search_const(keyword: str) -> None:
             found += 1
             color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
 
-            # 显示上下文
-            start = max(0, i - 1)
-            end = min(len(lines), i + 3)
-            for j in range(start, end):
-                stripped_line = lines[j].strip()
-                if stripped_line.startswith("//"):
+            # 显示上下文：完整注释块 + 匹配的行
+            # 1. 向上查找注释块起始位置
+            comment_start = i
+            if i > 0:
+                j = i - 1
+                while j >= 0:
+                    stripped_line = lines[j].strip()
+                    if stripped_line.startswith("//"):
+                        comment_start = j
+                        j -= 1
+                    elif stripped_line == "":
+                        # 空行：如果上面有注释，注释块结束
+                        if comment_start == i:
+                            # 还没有找到注释，继续向上
+                            j -= 1
+                            continue
+                        else:
+                            # 已经找到注释块，空行表示注释块结束
+                            break
+                    else:
+                        # 非注释非空行，注释块结束
+                        break
+
+            # 2. 显示注释块和匹配的行
+            # 收集要显示的行
+            display_lines = []
+            # 添加注释块
+            for j in range(comment_start, i):
+                display_lines.append((j, lines[j].rstrip(), "comment"))
+
+            # 添加匹配的行
+            display_lines.append((i, lines[i].rstrip(), "match"))
+
+            # 3. 显示行
+            for line_idx, line_content, line_type in display_lines:
+                stripped_line = line_content.strip()
+                if line_type == "comment":
                     print(f"    {C_GRAY}{stripped_line}{C_RESET}")
-                elif j == i:
+                elif line_type == "match":
                     print(f"    {C_BOLD}{C_YELLOW}{stripped_line}{C_RESET}")
-                elif stripped_line == "":
-                    continue
-                else:
-                    print(f"    {stripped_line}")
             print()
 
     if found:
