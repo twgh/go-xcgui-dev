@@ -380,7 +380,7 @@ def search_const(keyword: str) -> None:
             display_lines.append((i, lines[i].rstrip(), "match"))
 
             # 3. 显示行
-            for line_idx, line_content, line_type in display_lines:
+            for _, line_content, line_type in display_lines:
                 stripped_line = line_content.strip()
                 if line_type == "comment":
                     print(f"    {C_GRAY}{stripped_line}{C_RESET}")
@@ -394,12 +394,54 @@ def search_const(keyword: str) -> None:
         color_print(f"  未找到匹配 \"{keyword}\" 的常量", C_RED)
 
 
+def _find_type_definitions(type_names: set[str]) -> list[tuple[Path, int, str]]:
+    """查找类型定义.
+
+    Args:
+        type_names: 类型名称集合（如 {"XWM_WINDPROC", "XWM_WINDPROC1"}）
+
+    Returns:
+        [(文件路径, 行号, 类型定义内容), ...]
+    """
+    results = []
+    xc_dir = XCGUI_SRC / "xc"
+
+    if not xc_dir.exists():
+        return results
+
+    # 搜索 xc 目录下的所有 Go 文件
+    for go_file in sorted(xc_dir.rglob("*.go")):
+        if go_file.name in {"deprecated.go", "doc.go"}:
+            continue
+
+        try:
+            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+
+        for i, line in enumerate(lines):
+            # 检查是否为类型定义行
+            if not line.strip().startswith("type "):
+                continue
+
+            # 检查是否匹配任何类型名称
+            for type_name in type_names:
+                if f"type {type_name} " in line or f"type {type_name}(" in line:
+                    # 提取完整的类型定义（可能包括多行）
+                    context = extract_func_block(go_file, i + 1)
+                    results.append((go_file, i + 1, context))
+                    break
+
+    return results
+
+
 def search_event(keyword: str) -> None:
     """搜索事件相关代码.
 
     搜索策略:
         - 在 AddEvent_ 和 Event_ 开头的函数定义及其注释中搜索
         - 支持中英文关键词搜索
+        - 自动显示函数中引用的类型定义
 
     关键词规则:
         - 用 / 分割多个关键词，必须同时匹配所有关键词
@@ -416,12 +458,14 @@ def search_event(keyword: str) -> None:
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
+    # 收集所有找到的函数中引用的类型名称
+    referenced_types = set()
 
     # ── 判断是否为中文搜索 ──────────────────────────
     is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
     # 搜索目录
-    search_dirs = ["xc", "widget", "window"]
+    search_dirs = ["widget", "window", "edge"]
 
     for go_file in find_go_files(XCGUI_SRC, search_dirs):
         if go_file.name.endswith("_test.go"):
@@ -470,6 +514,35 @@ def search_event(keyword: str) -> None:
                 else:
                     print(f"    {stripped}")
             print()
+
+            # 提取函数中引用的类型名称（如 xc.XWM_WINDPROC1）
+            type_pattern = re.compile(r'xc\.([A-Z_][A-Z0-9_]*)')
+            for m in type_pattern.finditer(line):
+                type_name = m.group(1)
+                referenced_types.add(type_name)
+
+    # 显示引用的类型定义
+    if referenced_types:
+        color_print(f"\n  {'─'*50}", C_CYAN)
+        color_print(f"  相关类型定义:", C_CYAN, bold=True)
+        color_print(f"  {'─'*50}\n", C_CYAN)
+
+        type_defs = _find_type_definitions(referenced_types)
+        if type_defs:
+            for type_file, type_line, type_context in type_defs:
+                relative = type_file.relative_to(PROJECT_ROOT)
+                color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{type_line}{C_RESET}")
+                for ctx_line in type_context.splitlines():
+                    stripped = ctx_line.strip()
+                    if stripped.startswith("//"):
+                        print(f"    {C_GRAY}{stripped}{C_RESET}")
+                    elif "type" in stripped:
+                        print(f"    {C_BOLD}{stripped}{C_RESET}")
+                    else:
+                        print(f"    {stripped}")
+                print()
+        else:
+            color_print(f"  {C_GRAY}未找到相关类型定义{C_RESET}", C_GRAY)
 
     if found:
         color_print(f"  共找到 {found} 个匹配", C_YELLOW)
