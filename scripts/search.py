@@ -18,8 +18,8 @@
     python scripts/search.py const 窗口/最小化          # 用中文注释搜索常量 (多个关键词用 / 分割)
     python scripts/search.py event BnClick             # 搜索事件函数名关键词 (单个关键词)
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
-    python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词 (单个关键词)
-    python scripts/search.py event 窗口/鼠标光标        # 搜索事件中文注释关键词 (多个关键词用 / 分割)
+    python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释关键词 (单个关键词)
+    python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
     python scripts/search.py example TabBar            # 搜索示例关键词
 """
 
@@ -398,13 +398,13 @@ def search_event(keyword: str) -> None:
     """搜索事件相关代码.
 
     搜索策略:
-        - 如果关键词包含中文：先在事件常量注释中搜索，再找对应函数
-        - 如果关键词是英文：直接搜索函数名/常量名
+        - 在 AddEvent_ 和 Event_ 开头的函数定义及其注释中搜索
+        - 支持中英文关键词搜索
 
     关键词规则:
         - 用 / 分割多个关键词，必须同时匹配所有关键词
-        - 中文关键词：搜索事件注释
-        - 英文关键词：搜索函数名/常量名
+        - 中文关键词：搜索函数注释
+        - 英文关键词：搜索函数名
     """
     # 分割关键词
     keywords = [k.strip() for k in keyword.split('/') if k.strip()]
@@ -420,164 +420,56 @@ def search_event(keyword: str) -> None:
     # ── 判断是否为中文搜索 ──────────────────────────
     is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
-    if is_chinese:
-        # ── 中文搜索：注释 → 常量 → 函数 ─────────
-        event_constants = []
+    # 搜索目录
+    search_dirs = ["xc", "widget", "window"]
 
-        # 步骤1: 在事件常量文件中搜索注释
-        event_files = [
-            XCGUI_SRC / "xcc" / "elementevent.go",
-            XCGUI_SRC / "xcc" / "windowevent.go",
-        ]
+    for go_file in find_go_files(XCGUI_SRC, search_dirs):
+        if go_file.name.endswith("_test.go"):
+            continue
 
-        for event_file in event_files:
-            if not event_file.exists():
+        try:
+            text = go_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            # 只处理 AddEvent_ 或 Event_ 开头的函数定义行
+            if not ("AddEvent_" in line or "Event_" in line):
                 continue
 
-            try:
-                lines = event_file.read_text(encoding="utf-8", errors="replace").splitlines()
-            except Exception:
+            # 检查是否为函数定义行
+            func_name = _extract_func_name(line)
+            if func_name is None:
                 continue
 
-            for i, line in enumerate(lines):
-                # 检查所有中文关键词是否都在行中（不区分大小写）
-                if not all(kw.lower() in line.lower() for kw in keywords):
+            if is_chinese:
+                # ── 中文搜索：通过注释过滤 ──
+                comment = _get_func_comment(lines, i)
+                # 检查所有关键词是否都在注释中
+                if not all(kw in comment for kw in keywords):
                     continue
-
-                # 提取常量名
-                const_match = re.match(r'\s*(\w+)\s+\w+_\s*=', line)
-                if const_match:
-                    const_name = const_match.group(1)
-                    if const_name not in event_constants:
-                        event_constants.append(const_name)
-                        found += 1
-
-                        relative = event_file.relative_to(PROJECT_ROOT)
-                        color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
-                        print(f"    {C_GRAY}{lines[i].strip()}{C_RESET}")
-                        print()
-
-        # 步骤2: 用常量名搜索函数
-        if event_constants:
-            color_print(f"  {C_CYAN}找到事件常量: {', '.join(event_constants)}{C_RESET}", C_CYAN)
-            print()
-
-            search_dirs = ["xc", "widget", "window"]
-            for go_file in find_go_files(XCGUI_SRC, search_dirs):
-                if go_file.name.endswith("_test.go"):
-                    continue
-
-                try:
-                    text = go_file.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    continue
-
-                for const_name in event_constants:
-                    # 构造搜索后缀，去掉常见前缀
-                    if const_name.startswith("XWM_"):
-                        event_suffix = const_name[4:]
-                    elif const_name.startswith("XE_"):
-                        event_suffix = const_name[3:]
-                    elif const_name.startswith("WM_"):
-                        event_suffix = const_name[3:]
-                    else:
-                        event_suffix = const_name
-
-                    # 优先匹配函数定义（AddEvent_/Event_），再匹配常量引用
-                    patterns = [
-                        re.compile(rf'\bAddEvent_{re.escape(event_suffix)}\b', re.IGNORECASE),
-                        re.compile(rf'\bEvent_{re.escape(event_suffix)}\b', re.IGNORECASE),
-                        re.compile(rf'\b{re.escape(const_name)}\b', re.IGNORECASE),
-                    ]
-
-                    for pat in patterns:
-                        for m in pat.finditer(text):
-                            line_no = text[:m.start()].count('\n') + 1
-                            relative = go_file.relative_to(PROJECT_ROOT)
-                            found += 1
-
-                            color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{line_no}{C_RESET}")
-                            context = extract_func_block(go_file, line_no)
-                            for ctx_line in context.splitlines():
-                                stripped = ctx_line.strip()
-                                if stripped.startswith("//"):
-                                    print(f"    {C_GRAY}{stripped}{C_RESET}")
-                                elif m.group(0) in stripped:
-                                    highlighted = stripped.replace(m.group(0), f"{C_BOLD}{C_YELLOW}{m.group(0)}{C_RESET}")
-                                    print(f"    {highlighted}")
-                                elif "func" in stripped:
-                                    print(f"    {C_BOLD}{stripped}{C_RESET}")
-                                elif stripped == "":
-                                    continue
-                                else:
-                                    print(f"    {stripped}")
-                            print()
-
-    else:
-        # ── 英文搜索：直接匹配事件相关定义 ─────────
-        # 只匹配事件相关定义：
-        # 1. AddEvent_XXX 函数定义
-        # 2. Event_XXX 函数定义
-        # 3. 事件常量（XE_、XWM_、WM_ 等）
-        search_dirs = ["xc", "widget", "window", "xcc"]
-
-        # 编译事件相关模式
-        event_patterns = [
-            re.compile(r'AddEvent_\w+', re.IGNORECASE),
-            re.compile(r'Event_\w+', re.IGNORECASE),
-            re.compile(r'\bXE_\w+'),
-            re.compile(r'\bXWM_\w+'),
-            re.compile(r'\bWM_\w+'),
-        ]
-
-        for go_file in find_go_files(XCGUI_SRC, search_dirs):
-            try:
-                text = go_file.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                continue
-
-            lines = text.splitlines()
-            for i, line in enumerate(lines):
-                if go_file.name.endswith("_test.go"):
-                    continue
-
-                # 只处理事件相关的行
-                is_event_line = any(pat.search(line) for pat in event_patterns)
-                if not is_event_line:
-                    continue
-
-                # 检查所有关键词是否都在行中（不区分大小写）
+            else:
+                # ── 英文搜索：在函数定义行中搜索，不区分大小写 ──
                 line_lower = line.lower()
                 if not all(kw.lower() in line_lower for kw in keywords):
                     continue
 
-                # 找到匹配的文本用于高亮
-                matched_text = ""
-                for pat in event_patterns:
-                    m = pat.search(line)
-                    if m:
-                        matched_text = m.group(0)
-                        break
+            # 提取上下文
+            context = extract_func_block(go_file, i + 1)
+            relative = go_file.relative_to(PROJECT_ROOT)
 
-                found += 1
-                relative = go_file.relative_to(PROJECT_ROOT)
-                color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
-
-                context = extract_func_block(go_file, i + 1)
-                for ctx_line in context.splitlines():
-                    stripped = ctx_line.strip()
-                    if stripped.startswith("//"):
-                        print(f"    {C_GRAY}{stripped}{C_RESET}")
-                    elif matched_text and matched_text in stripped:
-                        highlighted = stripped.replace(matched_text, f"{C_BOLD}{C_YELLOW}{matched_text}{C_RESET}")
-                        print(f"    {highlighted}")
-                    elif "func" in stripped:
-                        print(f"    {C_BOLD}{stripped}{C_RESET}")
-                    elif stripped == "":
-                        continue
-                    else:
-                        print(f"    {stripped}")
-                print()
+            found += 1
+            color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
+            for ctx_line in context.splitlines():
+                stripped = ctx_line.strip()
+                if stripped.startswith("//"):
+                    print(f"    {C_GRAY}{stripped}{C_RESET}")
+                elif "func" in stripped:
+                    print(f"    {C_BOLD}{stripped}{C_RESET}")
+                else:
+                    print(f"    {stripped}")
+            print()
 
     if found:
         color_print(f"  共找到 {found} 个匹配", C_YELLOW)
