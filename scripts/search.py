@@ -688,18 +688,59 @@ def search_list(subcommand: str) -> None:
                         color_print(f"    {ex_dir.name:35} {C_GRAY}{desc} ({count} 文件){C_RESET}")
 
     elif subcommand == "packages":
-        for d in sorted(XCGUI_SRC.iterdir()):
-            if d.is_dir() and not d.name.startswith("."):
-                go_count = len(list(d.rglob("*.go")))
-                # 读取 doc.go 注释
-                doc_file = d / "doc.go"
-                desc = ""
-                if doc_file.exists():
-                    text = doc_file.read_text(encoding="utf-8", errors="replace")
-                    m = re.search(r'// Package \w+\s+(.+?)\.', text, re.DOTALL)
-                    if m:
-                        desc = m.group(1).replace("\n", " ").strip()
-                color_print(f"  {C_BOLD}{C_GREEN}{d.name:20}{C_RESET} {C_GRAY}{go_count:>4} 文件  {desc}{C_RESET}")
+        # 递归查找所有包含 .go 文件的目录（排除测试文件和废弃文件）
+        pkg_dirs = set()
+        for go_file in XCGUI_SRC.rglob("*.go"):
+            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+                continue
+            # 排除 main 包
+            try:
+                content = go_file.read_text(encoding="utf-8", errors="replace")
+                if re.search(r'^package\s+main\s*$', content, re.MULTILINE):
+                    continue
+            except Exception:
+                pass
+            pkg_dirs.add(go_file.parent)
+
+        found = 0
+        for d in sorted(pkg_dirs):
+            rel_path = d.relative_to(XCGUI_SRC)
+            # 计数该目录下符合条件的 .go 文件
+            go_count = len([f for f in d.glob("*.go")
+                            if f.name not in {"deprecated.go", "doc.go"}
+                            and not f.name.endswith("_test.go")])
+            found += 1
+            # 读取 doc.go 注释 (支持多行注释)
+            desc = ""
+            doc_file = d / "doc.go"
+            if doc_file.exists():
+                text = doc_file.read_text(encoding="utf-8", errors="replace")
+                # 提取 Package 注释块 (多行)
+                lines = text.split('\n')
+                in_pkg_comment = False
+                comment_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith('// Package'):
+                        in_pkg_comment = True
+                        # 提取 Package 后面的描述
+                        m = re.search(r'//\s*Package\s+\w+\s+(.*)', line)
+                        if m and m.group(1).strip():
+                            comment_lines.append(m.group(1).strip())
+                    elif in_pkg_comment:
+                        if stripped.startswith('//'):
+                            content = stripped[2:].strip()
+                            if content:
+                                comment_lines.append(content)
+                        else:
+                            # 非注释行，结束
+                            break
+                if comment_lines:
+                    # 合并多行，去除多余空白
+                    desc = re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
+            color_print(f"  {C_BOLD}{C_GREEN}{str(rel_path):30}{C_RESET} {C_GRAY}{go_count:>4} 文件  {desc}{C_RESET}")
+
+        color_print(f"\n  {C_YELLOW}共 {found} 个包{C_RESET}")
 
     elif subcommand == "events":
         # 列出所有可用事件类型
