@@ -1269,7 +1269,7 @@ def main():
     if args.command == "list":
         # list 命令: list <subcommand> [extra_arg]
         if len(args.args) == 0:
-            color_print("错误: list 命令需要子类型 (widgets/packages/examples/events)", C_RED)
+            color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events)", C_RED)
             sys.exit(1)
         subcommand = args.args[0].lower()
         extra_arg = args.args[1] if len(args.args) > 1 else ""
