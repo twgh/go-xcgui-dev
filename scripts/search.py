@@ -225,13 +225,27 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     # 合并描述行
     comment = " ".join(desc_lines)
     
-    # 去掉开头可能的函数名（如果有）
+    # 获取函数名
+    func_line = lines[func_line_idx]
+    m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)', func_line)
+    if m:
+        func_name = m.group(2)
+        
+        # 只有注释中包含函数名时，才去掉函数名
+        if func_name in comment:
+            comment = comment.replace(func_name, "").strip()
+    
+    # 去掉开头可能的函数名（中文格式：Button 按钮控件.）
+    # 格式：中文名 + 空格 + 描述
     for sep in [" ", "\t"]:
         parts = comment.split(sep, 1)
         if len(parts) > 1 and parts[0] and not parts[0][0].islower():
-            # 可能是函数名，去掉它
-            comment = parts[1]
-            break
+            # 检查是否是函数名（英文）
+            if parts[0][0].isupper():
+                # 是英文函数名，去掉它
+                comment = parts[1]
+                break
+            # 如果不是英文（如中文），保留整个注释
     
     # 只保留第一句（以.结尾的部分）
     if "." in comment:
