@@ -1107,6 +1107,46 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
 
         color_print(f"\n  {C_YELLOW}共 {found} 个包{C_RESET}")
 
+    elif subcommand == "windows":
+        # 列出 window 包的所有公开对象
+        window_dir = XCGUI_SRC / "window"
+        found = 0
+        if window_dir.exists():
+            for f in sorted(window_dir.glob("*.go")):
+                if f.name.endswith("_test.go") or f.name == "doc.go" or f.name == "deprecated.go":
+                    continue
+                # 读取文件提取类型名和注释
+                text = f.read_text(encoding="utf-8", errors="replace")
+                # 提取类型名: type Xxx struct { 或 type Xxx = ...
+                # 只匹配大写字母开头的公开类型
+                type_patterns = [
+                    re.search(r'^type\s+([A-Z]\w*)\s+struct\s*\{', text, re.MULTILINE),
+                    re.search(r'^type\s+([A-Z]\w*)\s*=\s*\w+', text, re.MULTILINE),
+                ]
+                type_name = None
+                for m in type_patterns:
+                    if m:
+                        type_name = m.group(1)
+                        break
+                
+                if not type_name:
+                    continue
+                
+                found += 1
+                # 尝试从 package 注释或文件头部注释获取描述
+                desc = _get_package_comment(f)
+                if not desc:
+                    # 尝试从文件中的第一个类型注释获取
+                    comment_m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
+                    if comment_m:
+                        desc = comment_m.group(1).strip()
+                
+                if desc:
+                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
+                else:
+                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET}")
+        color_print(f"\n  {C_YELLOW}共 {found} 个窗口对象{C_RESET}")
+
     elif subcommand == "events":
         if not extra_arg:
             # 列出所有可用事件类型
@@ -1179,6 +1219,7 @@ def main():
 
 列表子命令:
   list widgets       列出所有可用控件
+  list windows       列出所有窗口对象
   list packages      列出所有源码包
   list examples      列出所有示例
   list events       列出所有事件类型
@@ -1192,6 +1233,7 @@ def main():
   python scripts/search.py event BnClick
   python scripts/search.py example TabBar
   python scripts/search.py list widgets
+  python scripts/search.py list windows
   python scripts/search.py list events button
         """,
     )
