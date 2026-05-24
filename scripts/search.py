@@ -82,6 +82,11 @@ def extract_func_block(file_path: Path, line_no: int) -> str:
     # 转换为 0-indexed
     func_idx = line_no - 1
 
+    # ── 判断是否为类型定义（非函数定义）──────────────────
+    func_line = lines[func_idx].strip()
+    is_type_def = func_line.startswith("type ") and "func(" not in func_line.split("//")[0]
+    is_event_type = func_line.startswith("type ") and "func(" in func_line
+
     # ── 向上查找注释起始位置 ──────────────────────────
     # 从函数声明行的前一行开始向上查找
     comment_start = func_idx
@@ -106,27 +111,35 @@ def extract_func_block(file_path: Path, line_no: int) -> str:
             # 到达文件开头
             comment_start = 0
 
-    # ── 向下查找函数体结束位置 ────────────────────────
-    brace_count = 0
-    found_open = False
-    end = func_idx  # 至少包含函数声明行
-
-    for i in range(func_idx, total_lines):
-        line = lines[i]
-        for ch in line:
-            if ch == '{':
-                brace_count += 1
-                found_open = True
-            elif ch == '}':
-                brace_count -= 1
-
-        # 找到匹配的函数体结束
-        if found_open and brace_count == 0:
-            end = i
-            break
+    # ── 向下查找结束位置 ──────────────────────────────
+    if is_type_def and not is_event_type:
+        # 普通类型定义：只取当前行
+        end = func_idx
+    elif is_event_type:
+        # 事件类型定义（type XE_XXX func(...)）：只取当前行
+        end = func_idx
     else:
-        # 未找到匹配的大括号，使用简单策略：取函数声明后20行
-        end = min(total_lines - 1, func_idx + 20)
+        # 函数定义：匹配大括号
+        brace_count = 0
+        found_open = False
+        end = func_idx  # 至少包含函数声明行
+
+        for i in range(func_idx, total_lines):
+            line = lines[i]
+            for ch in line:
+                if ch == '{':
+                    brace_count += 1
+                    found_open = True
+                elif ch == '}':
+                    brace_count -= 1
+
+            # 找到匹配的函数体结束
+            if found_open and brace_count == 0:
+                end = i
+                break
+        else:
+            # 未找到匹配的大括号，使用简单策略：取函数声明后10行
+            end = min(total_lines - 1, func_idx + 10)
 
     return "\n".join(lines[comment_start:end + 1])
 
