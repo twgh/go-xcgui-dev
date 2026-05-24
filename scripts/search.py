@@ -198,10 +198,11 @@ def search_const(keyword: str) -> None:
         color_print(f"  错误: xcc 目录不存在: {xcc_dir}", C_RED)
         return
 
-    patterns = [
-        re.compile(rf'^\s*({keyword}\w*)\s', re.IGNORECASE),
-        re.compile(rf'^\s*//.*({keyword})', re.IGNORECASE),
-    ]
+    # 编译正则表达式 - 支持精确匹配和前缀匹配
+    # 使用 re.escape 处理特殊字符
+    pattern_const = re.compile(rf'^\s*(\w*{re.escape(keyword)}\w*)\s', re.IGNORECASE)
+    pattern_comment = re.compile(rf'^\s*//.*{re.escape(keyword)}', re.IGNORECASE)
+    pattern_exact = re.compile(rf'^\s*{re.escape(keyword)}\b', re.IGNORECASE)
 
     for go_file in sorted(xcc_dir.rglob("*.go")):
         try:
@@ -210,31 +211,37 @@ def search_const(keyword: str) -> None:
             continue
 
         lines = text.splitlines()
+        in_const_block = False
+        
         for i, line in enumerate(lines):
-            # 检查是否为常量定义
-            is_const = ("const (" in line or
-                        line.strip().startswith("//") or
-                        any(kw in line for kw in ["_Flag_", "_Style_", "_State_", "_Event_",
-                                                   "_Type_", "_Align_", "_Transparent_",
-                                                   "_Button_", "_Window_", "_Element_",
-                                                   "_Layout_", "_Scroll_", "_List_",
-                                                   "_Edit_", "_Menu_", "_Tool_", "_Image_",
-                                                   "_Font_", "_Color_", "_Text_", "_Draw_",
-                                                   "_Rect_", "_GroupBox_", "_Shape_",
-                                                   "_Tree_", "_Table_", "_Tab_", "_Pane_",
-                                                   "_CombinedState_", "_Common_"]))
-
-            if not is_const:
+            stripped = line.strip()
+            
+            # 追踪是否在 const ( ) 块中
+            if "const (" in stripped:
+                in_const_block = True
+            if in_const_block and stripped == ")":
+                in_const_block = False
                 continue
-
-            m = patterns[0].search(line)
-            if not m:
-                m = patterns[1].search(line)
+            
+            # 判断是否为常量相关行：
+            # 1. 在 const 块中
+            # 2. 行以 // 开头（注释）
+            # 3. 行包含 = 且不是注释（常量赋值）
+            is_const_line = (
+                in_const_block or
+                stripped.startswith("//") or
+                ("=" in stripped and not stripped.startswith("//"))
+            )
+            
+            if not is_const_line:
+                continue
+            
+            # 尝试匹配
+            m = pattern_exact.search(line) or pattern_const.search(line) or pattern_comment.search(line)
             if not m:
                 continue
 
             relative = go_file.relative_to(PROJECT_ROOT)
-            # 如果匹配的是注释行，也显示下一条常量定义行
             found += 1
             color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
 
@@ -242,15 +249,15 @@ def search_const(keyword: str) -> None:
             start = max(0, i - 1)
             end = min(len(lines), i + 3)
             for j in range(start, end):
-                stripped = lines[j].strip()
-                if stripped.startswith("//"):
-                    print(f"    {C_GRAY}{stripped}{C_RESET}")
+                stripped_line = lines[j].strip()
+                if stripped_line.startswith("//"):
+                    print(f"    {C_GRAY}{stripped_line}{C_RESET}")
                 elif j == i:
-                    print(f"    {C_BOLD}{C_YELLOW}{stripped}{C_RESET}")
-                elif stripped == "":
+                    print(f"    {C_BOLD}{C_YELLOW}{stripped_line}{C_RESET}")
+                elif stripped_line == "":
                     continue
                 else:
-                    print(f"    {stripped}")
+                    print(f"    {stripped_line}")
             print()
 
     if found:
