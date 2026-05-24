@@ -7,10 +7,15 @@
     python scripts/search.py event <keyword>     # 搜索事件相关
     python scripts/search.py example <keyword>   # 搜索示例代码
 
-    python scripts/search.py func Button         # 搜索 Button 相关函数
-    python scripts/search.py const Window_Style  # 搜索窗口样式常量
-    python scripts/search.py event AddEvent_BnClick  # 搜索点击事件
-    python scripts/search.py example TabBar      # 搜索 TabBar 示例
+示例:
+    python scripts/search.py func Center               # 搜索函数名关键词
+    python scripts/search.py func 最大化                # 用中文注释搜索函数 (单个关键词)
+    python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
+    python scripts/search.py const Window_Style        # 搜索常量关键词
+    python scripts/search.py event AddEvent_BnClick    # 搜索事件函数名
+    python scripts/search.py event BnClick             # 搜索事件函数名关键词(不区分大小写)
+    python scripts/search.py event 窗口消息过程         # 搜索事件中文注释关键词
+    python scripts/search.py example TabBar            # 搜索示例关键词
 """
 
 import argparse
@@ -119,18 +124,65 @@ def extract_func_block(file_path: Path, line_no: int) -> str:
     return "\n".join(lines[comment_start:end + 1])
 
 
+def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
+    """获取函数定义行上方的注释块内容.
+
+    Args:
+        lines: 文件行列表 (0-indexed)
+        func_line_idx: 函数声明行的索引 (0-indexed)
+
+    Returns:
+        注释文本（多个注释行用空格连接）
+    """
+    comment_lines = []
+    # 从函数行的前一行开始向上查找
+    i = func_line_idx - 1
+    while i >= 0:
+        stripped = lines[i].strip()
+        if stripped.startswith("//"):
+            # 去掉 // 前缀，保留注释内容
+            comment_lines.insert(0, stripped.lstrip("/").strip())
+            i -= 1
+        elif stripped == "":
+            # 空行：如果在注释块中间，继续向上；如果还没找到注释，停止
+            if comment_lines:
+                break
+            i -= 1
+        else:
+            # 非注释非空行，停止
+            break
+    return " ".join(comment_lines)
+
+
 def search_func(keyword: str) -> None:
     """搜索函数定义.
 
     搜索范围:
         - source/xcgui/ 下除 xcc/ 外的所有子目录
+
+    中文关键词行为:
+        - 用 / 分割多个关键词
+        - 只搜索函数注释中的匹配（因为函数名是英文）
     """
-    patterns = [
-        # 底层 C API: func XBtn_Create(...) int {
-        re.compile(rf'^\s*func\s+(\w*{keyword}\w*)\(', re.IGNORECASE),
-        # Go 方法: func (b *Button) SetText(...) {
-        re.compile(rf'^\s*func\s+\(.*?\)\s+(\w*{keyword}\w*)\(', re.IGNORECASE),
-    ]
+    # ── 判断是否为中文搜索 ──────────────────────────
+    is_chinese = bool(re.search(r'[\u4e00-\u9fff]', keyword))
+
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
+    # 编译正则表达式（仅英文搜索使用）
+    if is_chinese:
+        # 中文搜索：匹配所有函数定义，后续通过注释过滤
+        patterns = [
+            re.compile(r'^\s*func\s+\w+\('),          # 普通函数
+            re.compile(r'^\s*func\s+\(.*?\)\s+\w+\('),  # 方法
+        ]
+    else:
+        # 英文搜索：精确匹配函数名
+        patterns = [
+            re.compile(rf'^\s*func\s+(\w*{re.escape(keyword)}\w*)\(', re.IGNORECASE),
+            re.compile(rf'^\s*func\s+\(.*?\)\s+(\w*{re.escape(keyword)}\w*)\(', re.IGNORECASE),
+        ]
 
     # 动态获取所有子目录，排除 xcc
     search_dirs = [
@@ -140,6 +192,8 @@ def search_func(keyword: str) -> None:
 
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索函数: \"{keyword}\"", C_CYAN, bold=True)
+    if is_chinese and len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
@@ -149,15 +203,33 @@ def search_func(keyword: str) -> None:
         except Exception:
             continue
 
-        for i, line in enumerate(text.splitlines(), 1):
-            matched = False
-            for pat in patterns:
-                m = pat.search(line)
-                if m:
-                    matched = True
-                    break
-            if not matched:
-                continue
+        lines = text.splitlines()
+        for i, line in enumerate(lines, 1):
+            # 函数声明行索引 (0-indexed)
+            func_idx = i - 1
+
+            if is_chinese:
+                # ── 中文搜索：匹配所有函数，再通过注释过滤 ──
+                # 先检查是否是函数定义行
+                is_func_line = any(pat.search(line) for pat in patterns)
+                if not is_func_line:
+                    continue
+
+                # 获取函数注释
+                comment = _get_func_comment(lines, func_idx)
+
+                # 检查所有关键词是否都在注释中
+                if not all(kw in comment for kw in keywords):
+                    continue
+            else:
+                # ── 英文搜索：直接匹配函数名 ──
+                matched = False
+                for pat in patterns:
+                    if pat.search(line):
+                        matched = True
+                        break
+                if not matched:
+                    continue
 
             # 提取上下文
             context = extract_func_block(go_file, i)
@@ -584,6 +656,8 @@ def main():
 
 示例:
   python scripts/search.py func XBtn_Create
+  python scripts/search.py func 最大化
+  python scripts/search.py func 窗口/居中
   python scripts/search.py const Window_Style_
   python scripts/search.py event BnClick
   python scripts/search.py example TabBar
