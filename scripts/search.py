@@ -648,11 +648,12 @@ def search_list(subcommand: str) -> None:
                 if f.name.endswith("_test.go") or f.name == "doc.go" or f.name == "deprecated.go":
                     continue
                 name = f.stem
-                # 读取结构体注释
+                # 读取结构体注释 (格式: // 描述文字. 或 // Button 按钮控件.)
                 text = f.read_text(encoding="utf-8", errors="replace")
-                m = re.search(r'//\s*(\w+)\s+([^.\n]+)\.', text)
+                # 匹配注释: 可选英文类型名 + 描述 + 句号
+                m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
                 if m:
-                    desc = m.group(2).strip()
+                    desc = m.group(1).strip()
                     color_print(f"  {C_BOLD}{C_GREEN}{name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
                 else:
                     color_print(f"  {C_BOLD}{C_GREEN}{name:20}{C_RESET}")
