@@ -61,6 +61,9 @@ def find_go_files(base: Path, subdirs: list[str] | None = None) -> list[Path]:
                 files.extend(sorted(p.rglob("*.go")))
     else:
         files = sorted(base.rglob("*.go"))
+    # 跳过 deprecated.go 和 doc.go 文件
+    skip_files = {"deprecated.go", "doc.go"}
+    files = [f for f in files if f.name not in skip_files]
     return files
 
 
@@ -280,6 +283,9 @@ def search_const(keyword: str) -> None:
     pattern_exact = re.compile(rf'^\s*{re.escape(keyword)}\b', re.IGNORECASE)
 
     for go_file in sorted(xcc_dir.rglob("*.go")):
+        # 跳过 deprecated.go 和 doc.go 文件
+        if go_file.name in {"deprecated.go", "doc.go"}:
+            continue
         try:
             text = go_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
@@ -535,6 +541,9 @@ def search_example(keyword: str) -> None:
     pattern = re.compile(rf'({keyword})', re.IGNORECASE)
 
     for go_file in sorted(EXAMPLE_SRC.rglob("*.go")):
+        # 跳过 deprecated.go 和 doc.go 文件
+        if go_file.name in {"deprecated.go", "doc.go"}:
+            continue
         # 跳过非 main 包的辅助文件
         try:
             text = go_file.read_text(encoding="utf-8", errors="replace")
