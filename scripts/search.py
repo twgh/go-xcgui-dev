@@ -2,11 +2,13 @@
 """xcgui 源码搜索工具 — 查函数 / 常量 / 事件 / 示例.
 
 用法:
-    python scripts/search.py func <keyword>      # 搜索函数定义
-    python scripts/search.py const <keyword>     # 搜索常量定义
-    python scripts/search.py event <keyword>     # 搜索事件相关
-    python scripts/search.py example <keyword>   # 搜索示例代码
-    python scripts/search.py list <keyword>      # 列表, 可填: widgets/windows/packages/examples/events
+    python scripts/search.py func <keyword>         # 搜索函数定义
+    python scripts/search.py const <keyword>        # 搜索常量定义
+    python scripts/search.py event <keyword>        # 搜索事件相关
+    python scripts/search.py example <keyword>      # 搜索示例代码
+    python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events
+    python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链)
+    python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链)
 
 示例:
     python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
@@ -1433,31 +1435,39 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 子命令:
-  func <keyword>       搜索函数定义 (xc/widget/window/ani 等)
-  const <keyword>      搜索常量定义 (xcc)
-  event <keyword>      搜索事件相关代码 (AddEvent / 事件常量)
-  example <keyword>    搜索示例代码 (xcgui-example)
+  func <keyword>       搜索函数定义 (支持中英文, 多关键词用 / 分割)
+  const <keyword>      搜索常量定义 (支持中英文, 多关键词用 / 分割)
+  event <keyword>      搜索事件相关代码 (支持中英文, 多关键词用 / 分割)
+  example <keyword>    搜索示例代码 (在 xcgui-example 中搜索, 支持中英文, 多关键词用 / 分割)
 
 列表子命令:
-  list widgets       列出所有可用控件
-  list windows       列出所有窗口对象
+  list widgets       列出 widget 包所有公开对象
+  list windows       列出 window 包所有公开对象
   list packages      列出所有源码包
   list examples      列出所有示例
-  list events       列出所有事件类型
-  list events <对象名>  列出指定对象的所有事件 (含继承)
-  list funcs <对象名>   列出指定对象的所有方法 (含继承)
+  list events       列出所有事件函数名
+  list events <对象名>  列出指定对象的所有事件 (含继承链)
+  list funcs <对象名>   列出指定对象的所有方法 (含继承链)
+
+关键词规则:
+  用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文
 
 示例:
-  python scripts/search.py func XBtn_Create
-  python scripts/search.py func 最大化
-  python scripts/search.py func 窗口/居中
-  python scripts/search.py const Window_Style_
-  python scripts/search.py event BnClick
-  python scripts/search.py example TabBar
-  python scripts/search.py list widgets
-  python scripts/search.py list windows
-  python scripts/search.py list events button
-  python scripts/search.py list funcs button
+  python scripts/search.py func Center               # 搜索函数名关键词 (单个)
+  python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个用 / 分割)
+  python scripts/search.py func 最大化                # 用中文注释搜索函数
+  python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词)
+  python scripts/search.py const Window_Style        # 搜索常量关键词
+  python scripts/search.py const button/check        # 搜索常量关键词 (多个)
+  python scripts/search.py const 阴影窗口             # 用中文注释搜索常量
+  python scripts/search.py event BnClick             # 搜索事件函数名关键词
+  python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个)
+  python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释
+  python scripts/search.py example TabBar            # 搜索示例关键词
+  python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个)
+  python scripts/search.py list widgets              # 列出所有控件
+  python scripts/search.py list events button        # 列出 button 的所有事件
+  python scripts/search.py list funcs button         # 列出 button 的所有方法
         """,
     )
     parser.add_argument(
