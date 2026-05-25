@@ -9,6 +9,7 @@
 """
 
 import os
+import shutil
 import zipfile
 import io
 import urllib.request
@@ -68,6 +69,22 @@ def download_file_with_proxies(original_url, desc=""):
     return None
 
 
+def clear_directory(dir_path):
+    """清空目录下的所有内容，但保留目录本身."""
+    if not os.path.exists(dir_path):
+        return
+    
+    print(f"  清空目录: {dir_path}")
+    for item in os.listdir(dir_path):
+        item_path = os.path.join(dir_path, item)
+        try:
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        except Exception as e:
+            print(f"  警告: 无法删除 {item_path}: {e}")
+
 def extract_zip(zip_data, extract_to, top_dir_name):
     """解压 ZIP 数据到指定目录, 并将顶层目录重命名为 top_dir_name."""
     with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
@@ -82,7 +99,6 @@ def extract_zip(zip_data, extract_to, top_dir_name):
 
         # 重命名顶层目录
         if os.path.exists(final_path):
-            import shutil
             shutil.rmtree(final_path)
         os.rename(extract_path, final_path)
         print(f"  重命名: {top_dir} -> {top_dir_name}")
@@ -98,6 +114,10 @@ def main():
     # 创建 source 目录
     os.makedirs(source_dir, exist_ok=True)
     print(f"source 目录: {source_dir}")
+    
+    # 清空 source 目录
+    print("\n====== 清空 source 目录 ======")
+    clear_directory(source_dir)
     print()
 
     # 获取 xcgui 最新版本号
