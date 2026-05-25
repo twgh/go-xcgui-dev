@@ -104,9 +104,9 @@ def find_go_files(base: Path, subdirs: list[str] | None = None) -> list[Path]:
                 files.extend(sorted(p.rglob("*.go")))
     else:
         files = sorted(base.rglob("*.go"))
-    # 跳过 deprecated.go 和 doc.go 文件
+    # 跳过 deprecated.go、doc.go 和 _test.go 文件
     skip_files = {"deprecated.go", "doc.go"}
-    files = [f for f in files if f.name not in skip_files]
+    files = [f for f in files if f.name not in skip_files and not f.name.endswith("_test.go")]
     return files
 
 
@@ -461,8 +461,8 @@ def search_const(keyword: str) -> None:
 
     if xcc_dir.exists():
         for go_file in sorted(xcc_dir.rglob("*.go")):
-            # 跳过 deprecated.go 和 doc.go 文件
-            if go_file.name in {"deprecated.go", "doc.go"}:
+            # 跳过 deprecated.go、doc.go 和 _test.go 文件
+            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
                 continue
             go_files.append(go_file)
 
@@ -759,8 +759,8 @@ def search_example(keyword: str) -> None:
     found = 0
 
     for go_file in sorted(EXAMPLE_SRC.rglob("*.go")):
-        # 跳过 deprecated.go 和 doc.go 文件
-        if go_file.name in {"deprecated.go", "doc.go"}:
+        # 跳过 deprecated.go、doc.go 和 _test.go 文件
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
             continue
 
         try:
@@ -1255,7 +1255,10 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
                 color_print(f"\n  [{cat_dir.name}]", C_CYAN, bold=True)
                 for ex_dir in sorted(cat_dir.iterdir()):
                     if ex_dir.is_dir():
-                        go_files = list(ex_dir.glob("*.go"))
+                        # 跳过 deprecated.go、doc.go 和 _test.go 文件
+                        go_files = [f for f in ex_dir.glob("*.go")
+                                    if f.name not in {"deprecated.go", "doc.go"}
+                                    and not f.name.endswith("_test.go")]
                         count = len(go_files)
                         desc = ""
                         if go_files:
