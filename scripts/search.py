@@ -20,7 +20,9 @@
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释关键词 (单个关键词)
     python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
-    python scripts/search.py example TabBar            # 搜索示例关键词
+    python scripts/search.py example TabBar            # 搜索示例关键词 (单个关键词)
+    python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个关键词用 / 分割)
+    python scripts/search.py example 按钮/选中/事件     # 搜索示例关键词 (多个关键词用 / 分割)
     python scripts/search.py list widgets              # 列出 widget 包所有公开对象
     python scripts/search.py list windows              # 列出 window 包所有公开对象
     python scripts/search.py list packages             # 列出所有源码包
@@ -733,9 +735,18 @@ def search_example(keyword: str) -> None:
 
     搜索范围:
         - source/xcgui-example/  全部示例 .go 文件
+
+    关键词规则:
+        - 用 / 分割多个关键词，示例必须同时匹配所有关键词
+        - 支持在示例代码的任何位置搜索（函数名、注释、代码逻辑等）
     """
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索示例: \"{keyword}\"", C_CYAN, bold=True)
+    if len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
     color_print(f"{'='*60}\n", C_CYAN)
 
     if not EXAMPLE_SRC.exists():
@@ -743,27 +754,35 @@ def search_example(keyword: str) -> None:
         return
 
     found = 0
-    pattern = re.compile(rf'({keyword})', re.IGNORECASE)
 
     for go_file in sorted(EXAMPLE_SRC.rglob("*.go")):
         # 跳过 deprecated.go 和 doc.go 文件
         if go_file.name in {"deprecated.go", "doc.go"}:
             continue
-        # 跳过非 main 包的辅助文件
+
         try:
             text = go_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
 
-        # 快速检查
-        if keyword.lower() not in text.lower():
+        # 快速检查：所有关键词都必须出现在文件中（不区分大小写）
+        text_lower = text.lower()
+        if not all(kw.lower() in text_lower for kw in keywords):
             continue
+
+        # 构建多个关键词的正则模式（用于高亮）
+        # 用 | 连接多个关键词，匹配任意一个
+        pattern_str = '|'.join(re.escape(kw) for kw in keywords)
+        pattern = re.compile(rf'({pattern_str})', re.IGNORECASE)
 
         lines = text.splitlines()
         matched_lines = []
         relative = go_file.relative_to(PROJECT_ROOT)
+
         for i, line in enumerate(lines):
-            if pattern.search(line):
+            # 检查当前行是否包含所有关键词（不区分大小写）
+            line_lower = line.lower()
+            if all(kw.lower() in line_lower for kw in keywords):
                 matched_lines.append((i + 1, line))
 
         if matched_lines:
@@ -771,7 +790,7 @@ def search_example(keyword: str) -> None:
             color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET} ({len(matched_lines)} 处匹配)")
             for line_no, line_text in matched_lines[:8]:  # 每个文件最多显示 8 行
                 stripped = line_text.strip()
-                # 高亮关键词
+                # 高亮所有关键词
                 highlighted = pattern.sub(f"{C_BOLD}{C_YELLOW}\\1{C_RESET}", stripped)
                 print(f"    {C_GREEN}{line_no:>4}{C_RESET}: {highlighted}")
             if len(matched_lines) > 8:
