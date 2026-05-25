@@ -415,7 +415,7 @@ func main() {
 | 封装常量定义 | `source/xcgui/xcc/xcconst.go` |
 | 观察 Go 结构体嵌入 | `source/xcgui/widget/button.go` (Button 嵌入 Element) |
 
-## 封装时的代码生成模板
+## 为 xcgui 封装xi时的代码生成模板
 
 ### 控件封装模板
 
@@ -435,10 +435,15 @@ type MyControl struct {
 // 控件_创建, 失败返回 nil.
 //
 // x: x坐标.
+//
 // y: y坐标.
+//
 // cx: 宽度.
+//
 // cy: 高度.
+//
 // name: 标题.
+//
 // hParent: 父句柄.
 func NewMyControl(x, y, cx, cy int32, name string, hParent int) *MyControl {
     return NewMyControlByHandle(xc.XMyCtrl_Create(x, y, cx, cy, name, hParent))
@@ -488,10 +493,15 @@ import (
 // 控件_创建.
 //
 // x: x坐标.
+//
 // y: y坐标.
+//
 // cx: 宽度.
+//
 // cy: 高度.
+//
 // name: 标题.
+//
 // hParent: 父句柄.
 func XMyCtrl_Create(x, y, cx, cy int32, name string, hParent int) int {
     r, _, _ := xMyCtrl_Create.Call(
@@ -503,6 +513,7 @@ func XMyCtrl_Create(x, y, cx, cy int32, name string, hParent int) int {
 // 控件_方法.
 //
 // hEle: 控件句柄.
+//
 // param: 参数说明.
 func XMyCtrl_SomeMethod(hEle int, param int32) bool {
     r, _, _ := xMyCtrl_SomeMethod.Call(uintptr(hEle), uintptr(param))
