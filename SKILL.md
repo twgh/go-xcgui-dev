@@ -577,3 +577,4 @@ func XMyCtrl_SomeMethod(hEle int, param int32) bool {
 - `IStream` 对象不再使用了需要调用 `Release` 释放, 不管是你传参的还是函数返回的, 不再使用后都要释放, 以防内存泄漏
 - 获取的 WebView 相关的 com 对象不再使用了需要释放, 以防内存泄漏, 因为获取到的是 com 对象, gc回收了go对象, 但 com 对象不会被go gc回收, 所以需要手动调用 `Release` 释放, 例外情况是由于 `WebView.WebView2_2` 到 `WebView.WebView2_28` 是常用的对象变量(WebView2_*, 序号以后可能会更大), 这些内部声明好的对象变量会在调用 `WebView.Close` 时自动释放, 窗口关闭时会自动调用的, 你查看 `WebView.Close` 的源码可以看到释放的代码, 所以这些不需要你手动释放
 - **xcgui 仅支持 Windows 平台**，不要使用 bash/grep 命令搜索源码，使用 `python scripts/search.py`
+- xcgui 是纯 go 封装的, 不依赖 cgo, 无需 C 编译器
