@@ -19,6 +19,47 @@ agent_created: false
 4. **双重 API 层**：xcgui 有两层 API —— `widget/window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
 5. **xcgui 仅支持 Windows 平台**，不能使用 grep/ripgrep 等 Linux 命令行工具搜索源码。**必须使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词。
 
+## 源码初始化与更新
+
+本技能不包含 `source/` 目录（源码较大），首次使用或需要更新源码时，请执行以下操作。
+
+### 自动下载源码
+
+在项目根目录执行以下命令，自动下载 `xcgui` 和 `xcgui-example` 源码到 `source/` 目录：
+
+```bash
+python scripts/download.py
+```
+
+如果下载失败py脚本输出结果会给出下载链接的。
+
+### 下载失败？手动下载
+
+如果自动下载失败，提醒用户手动下载以下两个仓库的 ZIP 并解压到 `source/` 目录(下载地址会在py脚本输出结果中提供的)：
+
+1. **xcgui 源码**：
+   - 解压后重命名文件夹为 `xcgui`
+   
+2. **xcgui-example 示例**：
+   - 解压后重命名文件夹为 `xcgui-example`
+
+最终 `source/` 目录结构应如下：
+
+```
+source/
+├── xcgui/           # 主库源码
+└── xcgui-example/   # 示例代码
+```
+
+### 更新源码
+
+当 xcgui 库有更新时，你可以发出**"更新 xcgui 源码"**或**"重新下载源码"**指令，我会：
+
+1. 清空 `source/` 目录下的所有内容
+2. 重新执行 `python scripts/download.py` 下载最新源码
+
+---
+
 ## 信息检索工作流
 
 收到任何 xcgui 问题时，**必须使用 `scripts/search.py` 搜索工具**按以下步骤主动检索源码：
