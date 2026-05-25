@@ -17,7 +17,7 @@ agent_created: false
 2. **源码即真理**：`source/xcgui/` 下的 `.go` 文件是唯一的 API 真相来源，`source/xcgui-example/` 是唯一的用法示例来源。
 3. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
 4. **双重 API 层**：xcgui 有两层 API —— `widget/window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
-5. **xcgui 仅支持 Windows 平台**，不能使用 grep/ripgrep 等 Linux 命令行工具搜索源码。**必须使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你也可以尝试缩减/更换搜索关键词。
+5. **xcgui 仅支持 Windows 平台**，不能使用 grep/ripgrep 等 Linux 命令行工具搜索源码。**必须使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词。
 
 ## 信息检索工作流
 
@@ -28,17 +28,52 @@ agent_created: false
 项目提供了统一的搜索脚本：**`scripts/search.py`**
 
 ```bash
-# 四大搜索命令
-python scripts/search.py func <keyword>      # 搜索函数定义 (xc/widget/window/ani 等)
-python scripts/search.py const <keyword>     # 搜索常量定义 (xcc/)
-python scripts/search.py event <keyword>     # 搜索事件相关 (AddEvent / 事件常量 / 回调)
-python scripts/search.py example <keyword>   # 搜索示例代码 (xcgui-example/)
+# 四大搜索命令 (支持中英文关键词, 多关键词用 / 分割)
+python scripts/search.py func <keyword>      # 搜索函数定义
+python scripts/search.py const <keyword>     # 搜索常量定义
+python scripts/search.py event <keyword>     # 搜索事件定义
+python scripts/search.py example <keyword>   # 搜索示例代码
 
 # 列表/概览命令
-python scripts/search.py list widgets        # 列出所有可用控件
-python scripts/search.py list packages       # 列出所有源码包及文件数
+python scripts/search.py list widgets        # 列出 widget 包所有公开对象
+python scripts/search.py list windows        # 列出 window 包所有公开对象
+python scripts/search.py list packages       # 列出所有源码包
 python scripts/search.py list examples       # 列出所有示例
-python scripts/search.py list events         # 列出所有可用事件类型
+python scripts/search.py list events <对象名>  # 列出指定对象的所有事件 (含继承链)
+python scripts/search.py list funcs <对象名>   # 列出指定对象的所有方法 (含继承链)
+python scripts/search.py list events         # 列出所有事件函数名
+```
+
+**关键词规则**：
+
+- 用 `/` 分割多个关键词，会同时匹配所有关键词, 支持中英文, 不区分大小写
+- 关键词除了可以搜索函数/常量/事件定义外, 还可以搜索它们的注释, 关键词含中文时触发
+
+##### 示例
+
+```python
+python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
+python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
+python scripts/search.py func 最大化                # 用中文注释搜索函数 (单个关键词)
+python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
+python scripts/search.py const Window_Style        # 搜索常量关键词 (单个关键词)
+python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
+python scripts/search.py const 阴影窗口             # 用中文注释搜索常量 (单个关键词)
+python scripts/search.py const 窗口/最小化          # 用中文注释搜索常量 (多个关键词用 / 分割)
+python scripts/search.py event BnClick             # 搜索事件函数名关键词 (单个关键词)
+python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
+python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释关键词 (单个关键词)
+python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
+python scripts/search.py example TabBar            # 搜索示例关键词 (单个关键词)
+python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个关键词用 / 分割)
+python scripts/search.py example 按钮/选中/事件     # 搜索示例关键词 (多个关键词用 / 分割)
+python scripts/search.py list widgets              # 列出 widget 包所有公开对象
+python scripts/search.py list windows              # 列出 window 包所有公开对象
+python scripts/search.py list packages             # 列出所有源码包
+python scripts/search.py list examples             # 列出所有示例
+python scripts/search.py list events button        # 列出指定对象所有事件函数名
+python scripts/search.py list funcs button         # 列出指定对象所有方法名
+python scripts/search.py list events               # 列出所有事件函数名(这个可能没什么大用)
 ```
 
 ### Step 1：确定搜索类型
@@ -47,14 +82,16 @@ python scripts/search.py list events         # 列出所有可用事件类型
 
 | 问题类型 | 使用命令 | 说明 |
 |---------|---------|------|
-| 查某个函数怎么用 | `python scripts/search.py func <函数名>` | 搜索 xc/ + widget/ + window/ 目录 |
-| 查函数参数/返回值 | `python scripts/search.py func <函数名>` | 会显示完整函数签名和上方注释 |
-| 查常量/枚举值 | `python scripts/search.py const <关键词>` | 搜索 xcc/ 目录，显示注释+定义 |
-| 查事件怎么绑定 | `python scripts/search.py event <事件名>` | 搜索 AddEvent 方法和事件常量 |
+| 查函数定义和注释 | `python scripts/search.py func <关键词>` | 会显示完整函数定义和注释 |
+| 查常量定义和注释 | `python scripts/search.py const <关键词>` | 会显示完整常量定义和注释 |
+| 查事件定义和注释 | `python scripts/search.py event <关键词>` | 会显示完整函数定义和注释 |
 | 找示例参考 | `python scripts/search.py example <关键词>` | 搜 xcgui-example/ 全部示例 |
-| 不知道有什么控件 | `python scripts/search.py list widgets` | 列出所有可用控件和描述 |
-| 不知道有什么事件 | `python scripts/search.py list events` | 列出所有 AddEvent_* 事件类型 |
-| 了解项目结构 | `python scripts/search.py list packages` | 列出所有包和文件数 |
+| 不知道有什么元素对象 | `python scripts/search.py list widgets` | 列出所有可用元素对象和描述 |
+| 不知道有什么窗口对象 | `python scripts/search.py list windows` | 列出所有窗口对象和描述 |
+| 查看对象的所有事件 | `python scripts/search.py list events <对象名>` | 含继承链上的所有事件 |
+| 查看对象的所有方法 | `python scripts/search.py list funcs <对象名>` | 含继承链上的所有方法(含事件方法) |
+| 了解项目结构 | `python scripts/search.py list packages` | 列出所有包和文件数 (含描述) |
+| 查看所有示例 | `python scripts/search.py list examples` | 列出所有示例 (含描述) |
 
 ### Step 2：阅读确认
 
