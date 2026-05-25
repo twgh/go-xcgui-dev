@@ -6,6 +6,7 @@
     python scripts/search.py const <keyword>     # 搜索常量定义
     python scripts/search.py event <keyword>     # 搜索事件相关
     python scripts/search.py example <keyword>   # 搜索示例代码
+    python scripts/search.py list <keyword>      # 列表, 可填: widgets/windows/packages/examples/events
 
 示例:
     python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
@@ -28,8 +29,8 @@
     python scripts/search.py list packages             # 列出所有源码包
     python scripts/search.py list examples             # 列出所有示例
     python scripts/search.py list events               # 列出所有事件函数名
-    python scripts/search.py list events button        # 列出对象所有事件函数名
-    python scripts/search.py list funcs button         # 列出对象所有方法名
+    python scripts/search.py list events button        # 列出指定对象所有事件函数名
+    python scripts/search.py list funcs button         # 列出指定对象所有方法名
 """
 
 import argparse
