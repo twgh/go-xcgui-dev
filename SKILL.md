@@ -98,7 +98,6 @@ python scripts/search.py list events               # 列出所有事件函数名
 搜索到候选后，用 `read` 工具打开目标文件（路径与行号已在搜索结果中给出），确认：
 - 完整函数签名（多行参数、返回值类型）
 - 中文注释（`// 函数_描述` 和参数说明）
-- 相关常量的实际值
 - 事件回调的完整签名
 
 ### Step 3：回答
@@ -304,6 +303,7 @@ xc.XBtn_AddEvent_BnClick(hBtn, func(hEle int, pbHandled *bool) int {
 ```
 
 **关键区别**：
+
 - 高层 `widget.Button` 嵌入 `Element`，提供链式调用和自动方法集
 - 底层 `xc.XBtn_*` 直接操作 int 句柄，需手动管理生命周期
 - 所有底层函数签名中 `hEle`/`hWindow` 等句柄参数都在第一位
@@ -402,125 +402,6 @@ func main() {
 | `wutil` | 使用 Windows API 封装常用函数 | `github.com/twgh/xcgui/wapi/wutil` |
 | `wnd` | 使用 Windows API 封装窗口操作函数 | `github.com/twgh/xcgui/wapi/wnd` |
 
-## 封装新模块时的模板参考
-
-当需要为 xcgui 新增模块封装时，按需求选择参考模板：
-
-| 场景 | 参考文件 |
-|------|---------|
-| 封装新控件 | `source/xcgui/widget/button.go` |
-| 封装新窗口类型 | `source/xcgui/window/framewindow.go` |
-| 封装底层 C API | `source/xcgui/xc/button.go` |
-| 封装动画系统 | `source/xcgui/ani/` |
-| 封装常量定义 | `source/xcgui/xcc/xcconst.go` |
-| 观察 Go 结构体嵌入 | `source/xcgui/widget/button.go` (Button 嵌入 Element) |
-
-## 为 xcgui 封装xi时的代码生成模板
-
-### 控件封装模板
-
-```go
-package widget
-
-import (
-    "github.com/twgh/xcgui/xc"
-    "github.com/twgh/xcgui/xcc"
-)
-
-// MyControl 我的控件.
-type MyControl struct {
-    Element
-}
-
-// 控件_创建, 失败返回 nil.
-//
-// x: x坐标.
-//
-// y: y坐标.
-//
-// cx: 宽度.
-//
-// cy: 高度.
-//
-// name: 标题.
-//
-// hParent: 父句柄.
-func NewMyControl(x, y, cx, cy int32, name string, hParent int) *MyControl {
-    return NewMyControlByHandle(xc.XMyCtrl_Create(x, y, cx, cy, name, hParent))
-}
-
-// 从句柄创建对象, 失败返回 nil.
-func NewMyControlByHandle(handle int) *MyControl {
-    if handle <= 0 { return nil }
-    p := &MyControl{}
-    p.SetHandle(handle)
-    return p
-}
-
-// 从 name 创建对象, 失败返回 nil.
-func NewMyControlByName(name string) *MyControl {
-    return NewMyControlByHandle(xc.XC_GetObjectByName(name))
-}
-
-// 从 UID 创建对象, 失败返回 nil.
-func NewMyControlByUID(nUID int32) *MyControl {
-    return NewMyControlByHandle(xc.XC_GetObjectByUID(nUID))
-}
-
-// 从 UID 名称创建对象, 失败返回 nil.
-func NewMyControlByUIDName(name string) *MyControl {
-    return NewMyControlByHandle(xc.XC_GetObjectByUIDName(name))
-}
-
-// 控件_方法描述.
-//
-// param: 参数说明.
-func (m *MyControl) SomeMethod(param int32) bool {
-    return xc.XMyCtrl_SomeMethod(m.Handle, param)
-}
-```
-
-### 底层 C 函数绑定模板
-
-```go
-package xc
-
-import (
-    "github.com/twgh/xcgui/common"
-    "github.com/twgh/xcgui/xcc"
-)
-
-// 控件_创建.
-//
-// x: x坐标.
-//
-// y: y坐标.
-//
-// cx: 宽度.
-//
-// cy: 高度.
-//
-// name: 标题.
-//
-// hParent: 父句柄.
-func XMyCtrl_Create(x, y, cx, cy int32, name string, hParent int) int {
-    r, _, _ := xMyCtrl_Create.Call(
-        uintptr(x), uintptr(y), uintptr(cx), uintptr(cy),
-        common.StrPtr(name), uintptr(hParent))
-    return int(r)
-}
-
-// 控件_方法.
-//
-// hEle: 控件句柄.
-//
-// param: 参数说明.
-func XMyCtrl_SomeMethod(hEle int, param int32) bool {
-    r, _, _ := xMyCtrl_SomeMethod.Call(uintptr(hEle), uintptr(param))
-    return r != 0
-}
-```
-
 ## 示例快速查找表
 
 | 想实现的功能 | 参考示例 |
@@ -589,5 +470,7 @@ func XMyCtrl_SomeMethod(hEle int, param int32) bool {
 - 获取的 WebView 相关的 com 对象不再使用了需要释放, 以防内存泄漏, 因为获取到的是 com 对象, gc回收了go对象, 但 com 对象不会被go gc回收, 所以需要手动调用 `Release` 释放, 例外情况是由于 `WebView.WebView2_2` 到 `WebView.WebView2_28` 是常用的对象变量(WebView2_*, 序号以后可能会更大), 这些内部声明好的对象变量会在调用 `WebView.Close` 时自动释放, 窗口关闭时会自动调用的, 你查看 `WebView.Close` 的源码可以看到释放的代码, 所以这些不需要你手动释放
 - **xcgui 仅支持 Windows 平台**，不要使用 bash/grep 命令搜索源码，使用 `python scripts/search.py`
 - xcgui 是纯 go 封装的, 不依赖 cgo, 无需 C 编译器
-- 当程序使用 `app.New(true)` 参数为 true 时, 此时为 Direct2D 渲染模式
+- 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式
 - `drawx` 包内的对象是 `Draw`, `imagex` 包内的对象是 `Image` 和 `ImageSrc`
+- 生成颜色除了使用 `xc.RGBA` 函数外(函数定义为`func RGBA(r, g, b, a byte) uint32`), 还可以使用 `xc.HexRGB2RGBA` (函数定义为`func HexRGB2RGBA(str string, a byte) uint32`)将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
+
