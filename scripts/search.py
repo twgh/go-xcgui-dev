@@ -30,9 +30,9 @@
     python scripts/search.py list windows              # 列出 window 包所有公开对象
     python scripts/search.py list packages             # 列出所有源码包
     python scripts/search.py list examples             # 列出所有示例
-    python scripts/search.py list events               # 列出所有事件函数名
     python scripts/search.py list events button        # 列出指定对象所有事件函数名
     python scripts/search.py list funcs button         # 列出指定对象所有方法名
+    python scripts/search.py list events               # 列出所有事件函数名(这个可能没什么大用)
 """
 
 import argparse
@@ -1450,7 +1450,8 @@ def main():
   list funcs <对象名>   列出指定对象的所有方法 (含继承链)
 
 关键词规则:
-  用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文
+  - 用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文, 不区分大小写
+  - 关键词除了可以搜索函数/常量/事件定义外, 还可以搜索它们的注释, 关键词含中文时触发
 
 示例:
   python scripts/search.py func Center               # 搜索函数名关键词 (单个)
