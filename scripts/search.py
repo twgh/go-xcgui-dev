@@ -32,7 +32,7 @@
     python scripts/search.py list examples             # 列出所有示例
     python scripts/search.py list events button        # 列出指定对象所有事件函数名
     python scripts/search.py list funcs button         # 列出指定对象所有方法名
-    python scripts/search.py list events               # 列出所有事件函数名(这个可能没什么大用)
+    python scripts/search.py list events               # 列出所有事件函数名和描述
 """
 
 import argparse
@@ -1360,61 +1360,72 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
 
     elif subcommand == "events":
         if not extra_arg:
-            # 列出所有可用事件类型
+            # 列出所有可用事件类型（含描述）
             search_dirs = ["widget", "window", "edge"]
 
             # 按类型分类事件（存储完整形式）
-            widget_events = set()  # 存储 AddEvent_XXX
-            window_events = set()  # 存储 AddEvent_XXX
-            edge_events = set()  # 存储 Event_XXX
-
-            # 正则模式
-            pattern_addevent = re.compile(r'\bAddEvent_(\w+)')
-            pattern_event = re.compile(r'\bEvent_(\w+)')
+            widget_events = []  # 存储 (函数名, 注释)
+            window_events = []  # 存储 (函数名, 注释)
+            edge_events = []  # 存储 (函数名, 注释)
 
             for go_file in find_go_files(XCGUI_SRC, search_dirs):
-                try:
-                    text = go_file.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    continue
-
                 # 判断文件属于哪个目录
                 rel_path = go_file.relative_to(XCGUI_SRC)
                 parts = rel_path.parts
 
+                # 查找事件函数定义
+                event_funcs = _find_event_functions(go_file)
+
                 if parts[0] == "widget":
-                    for m in pattern_addevent.finditer(text):
-                        widget_events.add(f"AddEvent_{m.group(1)}")
-                    for m in pattern_event.finditer(text):
-                        widget_events.add(f"Event_{m.group(1)}")                        
+                    widget_events.extend(event_funcs)
                 elif parts[0] == "window":
-                    for m in pattern_addevent.finditer(text):
-                        window_events.add(f"AddEvent_{m.group(1)}")
-                    for m in pattern_event.finditer(text):
-                        window_events.add(f"Event_{m.group(1)}")                    
+                    window_events.extend(event_funcs)
                 elif parts[0] == "edge":
-                    for m in pattern_event.finditer(text):
-                        edge_events.add(f"Event_{m.group(1)}")
+                    edge_events.extend(event_funcs)
 
             total = len(widget_events) + len(window_events) + len(edge_events)
             color_print(f"  共 {total} 种事件类型:\n", C_YELLOW)
 
             if widget_events:
                 color_print(f"  {C_BOLD}元素事件:{C_RESET}", C_CYAN)
-                for ev in sorted(widget_events):
-                    color_print(f"    {ev}", C_GREEN)
+                # 按函数名排序
+                widget_events.sort(key=lambda x: x[1])
+                # 计算最大函数名长度（用于对齐注释）
+                max_func_len = max(len(func_name) for _, func_name, _ in widget_events)
+                for _, func_name, comment in widget_events:
+                    padding = " " * (max_func_len - len(func_name))
+                    if comment:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+                    else:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}")
                 print()
 
             if window_events:
                 color_print(f"  {C_BOLD}窗口事件:{C_RESET}", C_CYAN)
-                for ev in sorted(window_events):
-                    color_print(f"    {ev}", C_GREEN)
+                # 按函数名排序
+                window_events.sort(key=lambda x: x[1])
+                # 计算最大函数名长度（用于对齐注释）
+                max_func_len = max(len(func_name) for _, func_name, _ in window_events)
+                for _, func_name, comment in window_events:
+                    padding = " " * (max_func_len - len(func_name))
+                    if comment:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+                    else:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}")
                 print()
 
             if edge_events:
                 color_print(f"  {C_BOLD}WebView 事件:{C_RESET}", C_CYAN)
-                for ev in sorted(edge_events):
-                        color_print(f"    {ev}", C_GREEN)
+                # 按函数名排序
+                edge_events.sort(key=lambda x: x[1])
+                # 计算最大函数名长度（用于对齐注释）
+                max_func_len = max(len(func_name) for _, func_name, _ in edge_events)
+                for _, func_name, comment in edge_events:
+                    padding = " " * (max_func_len - len(func_name))
+                    if comment:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+                    else:
+                        print(f"    {C_GREEN}{func_name}{C_RESET}")
                 print()
         else:
             # 列出指定对象的所有事件 (含继承)
@@ -1469,6 +1480,7 @@ def main():
   python scripts/search.py list widgets              # 列出所有控件
   python scripts/search.py list events button        # 列出 button 的所有事件
   python scripts/search.py list funcs button         # 列出 button 的所有方法
+  python scripts/search.py list events               # 列出所有事件函数名和描述
         """,
     )
     parser.add_argument(
