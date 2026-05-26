@@ -4,7 +4,7 @@ xcgui（炫彩界面库）开发助手技能包。用于 Windows 桌面应用开
 
 ## 技能目录结构
 
-[下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip)后只保留这些文件即可
+[下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip) 后只保留这些文件即可
 
 ```
 go-xcgui-dev/
@@ -17,10 +17,18 @@ go-xcgui-dev/
 ## 技能触发场景
 
 - 使用 xcgui 写代码
-- 封装新 API
-- 查找 xcgui 函数/常量/事件/示例
-- 排查 xcgui 编译/运行时问题
-- 生成新控件封装代码
+- 查找 xcgui 函数/常量/事件/示例用法
+- 排查 xcgui 编译问题
+
+## 使用案例
+
+可以这样问:
+
+```
+请使用 xcgui 封装一个 WinUI 3 风格的按钮
+请使用 xcgui 封装一个 WinUI 3 风格的编辑框
+请查找一下窗口置顶函数
+```
 
 ## 相关链接
 
