@@ -1,13 +1,13 @@
 ---
 name: go-xcgui-dev
 description: |
-  xcgui（炫彩界面库）Go 绑定开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2 等 API 封装。
-  触发场景：使用 xcgui 写代码、封装新 API、查找 xcgui 函数/常量/事件用法、排查 xcgui 编译/运行时问题、参考示例项目结构、生成新控件封装代码。
+  Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。
+  触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/示例用法、排查 xcgui 编译问题。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
 agent_created: false
 ---
 
-# go-xcgui-dev — xcgui 炫彩界面库 Go 绑定开发助手
+# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手
 
 ## 核心准则
 
@@ -21,7 +21,7 @@ agent_created: false
 
 ## 源码初始化与更新
 
-本技能不包含 `source/` 目录（源码较大），首次使用或需要更新源码时，请执行以下操作。
+本技能不包含 `source/` 目录，首次使用或需要更新源码时，请执行以下操作。
 
 ### 自动下载源码
 
@@ -53,10 +53,7 @@ source/
 
 ### 更新源码
 
-当 xcgui 库有更新时，你可以发出**"更新 xcgui 源码"**或**"重新下载源码"**指令，我会：
-
-1. 清空 `source/` 目录下的所有内容
-2. 重新执行 `python scripts/download.py` 下载最新源码
+当 xcgui 库有更新时，你可以发出**"更新 xcgui 源码"**或**"重新下载源码"**指令，我会重新执行 `python scripts/download.py` 下载最新源码。
 
 ---
 
@@ -144,6 +141,8 @@ python scripts/search.py list events               # 列出所有事件函数名
 ### Step 3：回答
 
 基于源码内容组织回答，附上相对文件路径和行号。
+
+附上是基于什么版本的 xcgui 源码来回答的, 本地的 xcgui 源码版本号可在 `source/xcgui/README.md` 中找到, 可使用 `release-(\d+\.\d+\.\d+)` 正则表达式提取出该版本号, 会得到 `1.4.0` 这样的版本号。
 
 ## 源码目录地图
 
@@ -281,7 +280,7 @@ source/
         └── YanZheng018/      # 验证码
 ```
 
-## 编码规范速查
+## xcgui 源码的编码规范速查
 
 ### 文档注释风格
 
