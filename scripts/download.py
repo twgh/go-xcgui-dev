@@ -8,11 +8,15 @@
   - direct: 直连
 """
 
+import io
 import os
 import shutil
 import zipfile
-import io
 import urllib.request
+
+# 解决 Windows cmd 中文输出乱码：强制 Python 输出使用 UTF-8
+# 设置 PYTHONIOENCODING 环境变量是最可靠的方式
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # 代理列表
 PROXIES = [
