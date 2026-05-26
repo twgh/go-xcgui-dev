@@ -10,13 +10,25 @@
 
 import io
 import os
+import sys
 import shutil
 import zipfile
 import urllib.request
 
-# 解决 Windows cmd 中文输出乱码：强制 Python 输出使用 UTF-8
-# 设置 PYTHONIOENCODING 环境变量是最可靠的方式
-os.environ['PYTHONIOENCODING'] = 'utf-8'
+# 解决 Windows cmd 中文输出乱码：重新配置 stdout/stderr 使用 UTF-8
+# 使用 getattr + try 避免 basedpyright 类型检查报错
+_reconfigure = getattr(sys.stdout, 'reconfigure', None)
+if _reconfigure is not None:
+    try:
+        _reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+_reconfigure = getattr(sys.stderr, 'reconfigure', None)
+if _reconfigure is not None:
+    try:
+        _reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 # 代理列表
 PROXIES = [
