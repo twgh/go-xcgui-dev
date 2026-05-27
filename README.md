@@ -1,6 +1,6 @@
 # go-xcgui-dev
 
-xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发。
+Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发。
 
 ## 技能目录结构
 
