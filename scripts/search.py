@@ -8,8 +8,8 @@
     python scripts/search.py event <keyword>        # 搜索事件相关
     python scripts/search.py example <keyword>      # 搜索示例代码
     python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events
-    python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链)
-    python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链)
+    python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
+    python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
 
 示例:
     python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
@@ -32,7 +32,7 @@
     python scripts/search.py list packages             # 列出所有源码包
     python scripts/search.py list examples             # 列出所有示例
     python scripts/search.py list events button        # 列出指定对象所有事件函数名
-    python scripts/search.py list funcs button         # 列出指定对象所有方法名
+    python scripts/search.py list funcs button         # 列出指定对象所有方法名(含继承链,含事件)
     python scripts/search.py list events               # 列出所有事件函数名和描述
 """
 
@@ -981,12 +981,13 @@ def _find_event_functions(go_file: Path) -> list[tuple[int, str, str]]:
     return results
 
 
-def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str]) -> list[tuple[str, int, str, str]]:
-    """在指定目录下搜索所有事件函数 (AddEvent_ 或 Event_ 开头)，且接收者是目标结构体之一.
+def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str], include_event_prefix: bool = False) -> list[tuple[str, int, str, str]]:
+    """在指定目录下搜索事件函数，且接收者是目标结构体之一.
 
     Args:
         dir_path: 目录路径
         target_structs: 目标结构体名列表
+        include_event_prefix: 是否包含 Event_ 开头的函数
 
     Returns:
         [(结构体名, 行号, 函数名, 注释), ...]
@@ -1009,11 +1010,14 @@ def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str]) -> l
         for i, line in enumerate(lines):
             # 匹配 AddEvent_ 或 Event_ 开头的函数定义
             # func (w *WebViewEventImpl) Event_NavigationCompleted(...)
-            m = re.search(r'func\s+\((\w+)\s+\*(\w+)\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
+            m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
             if m:
-                receiver_var = m.group(1)  # 接收者变量名
-                receiver_type = m.group(2)  # 接收者类型名
-                func_name = m.group(3)
+                receiver_type = m.group(1)  # 接收者类型名
+                func_name = m.group(2)
+                
+                # 如果不包含 Event_ 开头的函数，跳过
+                if not include_event_prefix and func_name.startswith("Event_"):
+                    continue
                 
                 # 检查接收者类型是否在目标结构体列表中
                 if receiver_type in target_structs:
@@ -1024,12 +1028,13 @@ def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str]) -> l
     return results
 
 
-def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str]) -> list[tuple[str, int, str, str]]:
+def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str], include_event_prefix: bool = False) -> list[tuple[str, int, str, str]]:
     """在指定目录下搜索所有方法函数，且接收者是目标结构体之一.
 
     Args:
         dir_path: 目录路径
         target_structs: 目标结构体名列表
+        include_event_prefix: 是否包含 Event_ 开头的函数
 
     Returns:
         [(结构体名, 行号, 函数名, 注释), ...]
@@ -1061,6 +1066,10 @@ def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str]) -> lis
                 if receiver_type in target_structs:
                     # 只显示公开方法（首字母大写）
                     if func_name[0].isupper():
+                        # 如果不包含 Event_ 开头的函数，跳过
+                        if not include_event_prefix and func_name.startswith("Event_"):
+                            continue
+                        
                         # 获取函数上方的注释
                         comment = _get_func_comment(lines, i)
                         results.append((receiver_type, i + 1, func_name, comment))
@@ -1068,11 +1077,12 @@ def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str]) -> lis
     return results
 
 
-def _list_object_funcs(obj_name: str) -> None:
+def _list_object_funcs(obj_name: str, include_event_prefix: bool = False) -> None:
     """列出指定对象及其继承链上的所有公开方法.
 
     Args:
         obj_name: 对象名 (不区分大小写)
+        include_event_prefix: 是否包含 Event_ 开头的函数
     """
     # 构建继承关系映射
     inheritance_chain, file_map = _build_inheritance_map()
@@ -1094,6 +1104,8 @@ def _list_object_funcs(obj_name: str) -> None:
     all_structs = [target_struct] + chain
 
     color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
+    if include_event_prefix:
+        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
     print()
 
     # 收集所有方法
@@ -1119,7 +1131,7 @@ def _list_object_funcs(obj_name: str) -> None:
         processed_dirs.add(str(dir_path))
         
         # 在当前目录及其子目录中搜索所有方法
-        funcs = _find_all_functions_in_dir(dir_path, all_structs)
+        funcs = _find_all_functions_in_dir(dir_path, all_structs, include_event_prefix)
         all_funcs.extend(funcs)
 
     if not all_funcs:
@@ -1147,11 +1159,12 @@ def _list_object_funcs(obj_name: str) -> None:
     color_print(f"  共找到 {len(all_funcs)} 个方法", C_YELLOW)
 
 
-def _list_object_events(obj_name: str) -> None:
+def _list_object_events(obj_name: str, include_event_prefix: bool = False) -> None:
     """列出指定对象及其继承链上的所有事件函数 (AddEvent_ 或 Event_ 开头).
 
     Args:
         obj_name: 对象名 (不区分大小写)
+        include_event_prefix: 是否包含 Event_ 开头的函数
     """
     # 构建继承关系映射
     inheritance_chain, file_map = _build_inheritance_map()
@@ -1173,6 +1186,8 @@ def _list_object_events(obj_name: str) -> None:
     all_structs = [target_struct] + chain
 
     color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
+    if include_event_prefix:
+        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
     print()
 
     # 收集所有事件
@@ -1198,7 +1213,7 @@ def _list_object_events(obj_name: str) -> None:
         processed_dirs.add(str(dir_path))
         
         # 在当前目录及其子目录中搜索事件函数
-        events = _find_event_functions_in_dir(dir_path, all_structs)
+        events = _find_event_functions_in_dir(dir_path, all_structs, include_event_prefix)
         all_events.extend(events)
 
     if not all_events:
@@ -1226,17 +1241,20 @@ def _list_object_events(obj_name: str) -> None:
     color_print(f"  共找到 {len(all_events)} 个事件", C_YELLOW)
 
 
-def search_list(subcommand: str, extra_arg: str = "") -> None:
+def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool = False) -> None:
     """列出指定子命令下的所有文件/内容.
 
     Args:
         subcommand: 子命令 (widgets/packages/examples/events)
         extra_arg: 额外参数 (如对象名)
+        include_event_prefix: 是否包含 Event_ 开头的函数
     """
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  列出: {subcommand}", C_CYAN, bold=True)
     if extra_arg:
         color_print(f"  对象: {extra_arg}", C_CYAN)
+    if include_event_prefix:
+        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
     color_print(f"{'='*60}\n", C_CYAN)
 
     if subcommand == "widgets":
@@ -1448,7 +1466,7 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
                 print()
         else:
             # 列出指定对象的所有事件 (含继承)
-            _list_object_events(extra_arg)
+            _list_object_events(extra_arg, include_event_prefix)
 
     elif subcommand == "funcs":
         if not extra_arg:
@@ -1456,7 +1474,7 @@ def search_list(subcommand: str, extra_arg: str = "") -> None:
             color_print(f"  用法: python scripts/search.py list funcs <对象名>", C_GRAY)
             return
         # 列出指定对象的所有方法 (含继承)
-        _list_object_funcs(extra_arg)
+        _list_object_funcs(extra_arg, include_event_prefix)
 
 
 def main():
@@ -1476,12 +1494,13 @@ def main():
   list packages      列出所有源码包
   list examples      列出所有示例
   list events       列出所有事件函数名
-  list events <对象名>  列出指定对象的所有事件 (含继承链)
-  list funcs <对象名>   列出指定对象的所有方法 (含继承链)
+  list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
+  list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
 
 关键词规则:
   - 用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文, 不区分大小写
-  - 关键词除了可以搜索函数/常量/事件定义外, 还可以搜索它们的注释, 关键词含中文时触发
+  - 关键词除了可以搜索函数/常量/事件定义外, 还可以搜索它们的注释, 在关键词含中文时触发
+  - `list funcs <对象名>` 和 `list events <对象名>` 命令默认是不会列出以 `Event` 开头的函数的, 除非在最后面再加个 `all` 参数, 一般不需要 `Event` 开头的函数, 这两个命令都会列出 `AddEvent` 开头的函数, 这种事件添加方式更常用
 
 示例:
   python scripts/search.py func Center               # 搜索函数名关键词 (单个)
@@ -1497,8 +1516,8 @@ def main():
   python scripts/search.py example TabBar            # 搜索示例关键词
   python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个)
   python scripts/search.py list widgets              # 列出所有控件
-  python scripts/search.py list events button        # 列出 button 的所有事件
-  python scripts/search.py list funcs button         # 列出 button 的所有方法
+  python scripts/search.py list events button        # 列出 button 的所有事件 (不含 Event 开头函数)
+  python scripts/search.py list funcs button         # 列出 button 的所有方法 (不含 Event 开头函数)
   python scripts/search.py list events               # 列出所有事件函数名和描述
         """,
     )
@@ -1532,13 +1551,27 @@ def main():
 
     # 处理参数
     if args.command == "list":
-        # list 命令: list <subcommand> [extra_arg]
+        # list 命令: list <subcommand> [extra_arg] [all]
         if len(args.args) == 0:
             color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events)", C_RED)
             sys.exit(1)
         subcommand = args.args[0].lower()
-        extra_arg = args.args[1] if len(args.args) > 1 else ""
-        search_list(subcommand, extra_arg)
+        
+        # 解析 extra_arg 和 all 参数
+        include_event_prefix = False
+        if len(args.args) > 1:
+            # 检查最后一个参数是否为 "all"
+            if args.args[-1].lower() == "all":
+                include_event_prefix = True
+                # extra_arg 是除去 subcommand 和 "all" 之后的部分
+                extra_arg = " ".join(args.args[1:-1]) if len(args.args) > 2 else ""
+            else:
+                # 没有 "all" 参数
+                extra_arg = " ".join(args.args[1:])
+        else:
+            extra_arg = ""
+        
+        search_list(subcommand, extra_arg, include_event_prefix)
     else:
         # 其他命令: <command> <keyword>
         if len(args.args) == 0:
