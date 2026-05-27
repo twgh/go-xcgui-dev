@@ -7,6 +7,7 @@
     python scripts/search.py const <keyword>        # 搜索常量定义
     python scripts/search.py event <keyword>        # 搜索事件相关
     python scripts/search.py example <keyword>      # 搜索示例代码
+    python scripts/search.py example_name <keyword> # 搜索示例名或包注释
     python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects
     python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
     python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
@@ -14,13 +15,13 @@
 
 示例:
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
-    python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
+    python scripts/search.py func 窗口/居中             # 用中文搜索函数注释 (多个关键词用 / 分割)
     python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
-    python scripts/search.py const 窗口/最小化          # 用中文注释搜索常量 (多个关键词用 / 分割)
+    python scripts/search.py const 窗口/最小化          # 用中文搜索常量注释 (多个关键词用 / 分割)
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
-    python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个关键词用 / 分割)
-    python scripts/search.py example 按钮/选中/事件     # 搜索示例关键词 (多个关键词用 / 分割)
+    python scripts/search.py example event/TabBar      # 搜索示例内容关键词 (多个关键词用 / 分割)
+    python scripts/search.py example 按钮/选中/事件     # 搜索示例内容关键词 (多个关键词用 / 分割)
     python scripts/search.py list widgets              # 列出 widget 包所有公开对象
     python scripts/search.py list windows              # 列出 window 包所有公开对象
     python scripts/search.py list packages             # 列出所有源码包
@@ -28,6 +29,8 @@
     python scripts/search.py list events button        # 列出 Button 的所有事件函数名
     python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
     python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
+    python scripts/search.py example_name 美化/编辑框   # 搜索示例包注释
+    python scripts/search.py example_name draw/button  # 搜索示例名
 """
 
 import argparse
@@ -816,6 +819,90 @@ def search_example(keyword: str) -> None:
         color_print(f"  未找到匹配 \"{keyword}\" 的示例", C_RED)
 
 
+def search_example_name(keyword: str) -> None:
+    """搜索示例名或包注释.
+
+    搜索策略:
+        - 关键词不含中文: 搜索示例目录名 (example_name <keyword>)
+        - 关键词含中文: 搜索示例的包注释 (package 上方的注释)
+
+    关键词规则:
+        - 用 / 分割多个关键词，示例必须同时匹配所有关键词
+        - 不区分大小写
+    """
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
+    # 判断是否为中文搜索
+    is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
+
+    color_print(f"\n{'='*60}", C_CYAN)
+    color_print(f"  搜索示例{'注释' if is_chinese else '名'}: \"{keyword}\"", C_CYAN, bold=True)
+    if len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
+    color_print(f"{'='*60}\n", C_CYAN)
+
+    if not EXAMPLE_SRC.exists():
+        color_print(f"  错误: 示例目录不存在: {EXAMPLE_SRC}", C_RED)
+        return
+
+    found = 0
+
+    # 遍历示例目录: EXAMPLE_SRC / 分类目录 / 示例目录
+    for cat_dir in sorted(EXAMPLE_SRC.iterdir()):
+        if not cat_dir.is_dir():
+            continue
+
+        for ex_dir in sorted(cat_dir.iterdir()):
+            if not ex_dir.is_dir():
+                continue
+
+            # 示例名 (目录名)
+            example_name = ex_dir.name
+
+            # 获取示例的包注释
+            package_comment = ""
+            go_files = [f for f in ex_dir.glob("*.go")
+                        if f.name not in {"deprecated.go", "doc.go"}
+                        and not f.name.endswith("_test.go")]
+            if go_files:
+                package_comment = _get_package_comment(go_files[0])
+
+            # 根据搜索类型进行匹配
+            if is_chinese:
+                # 中文搜索: 在包注释中搜索
+                if not package_comment:
+                    continue
+                # 检查所有关键词是否都在包注释中 (不区分大小写)
+                if not all(kw.lower() in package_comment.lower() for kw in keywords):
+                    continue
+            else:
+                # 英文搜索: 在示例名 (目录名) 中搜索
+                if not all(kw.lower() in example_name.lower() for kw in keywords):
+                    continue
+
+            # 找到匹配
+            found += 1
+            relative = ex_dir.relative_to(PROJECT_ROOT)
+
+            # 显示结果
+            if is_chinese:
+                color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
+                print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+                print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
+            else:
+                color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
+                print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+                if package_comment:
+                    print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
+            print()
+
+    if found:
+        color_print(f"  共找到 {found} 个匹配", C_YELLOW)
+    else:
+        color_print(f"  未找到匹配 \"{keyword}\" 的示例", C_RED)
+
+
 def _parse_struct_inheritance(go_file: Path) -> dict[str, str]:
     """解析 Go 文件中的结构体嵌入关系.
 
@@ -1543,6 +1630,7 @@ def main():
   const <keyword>      搜索常量定义 (支持中英文, 多关键词用 / 分割)
   event <keyword>      搜索事件相关代码 (支持中英文, 多关键词用 / 分割)
   example <keyword>    搜索示例代码 (在 xcgui-example 中搜索, 支持中英文, 多关键词用 / 分割)
+  example_name <keyword>  搜索示例名或包注释 (多关键词用 / 分割, 含中文搜包注释, 否则搜示例名)
 
 列表子命令:
   list widgets       列出 widget 包所有公开对象
@@ -1574,7 +1662,7 @@ def main():
     )
     parser.add_argument(
         "command",
-        choices=["func", "const", "event", "example", "list"],
+        choices=["func", "const", "event", "example", "example_name", "list"],
         help="搜索命令",
     )
     parser.add_argument(
@@ -1638,6 +1726,8 @@ def main():
             search_event(keyword)
         elif args.command == "example":
             search_example(keyword)
+        elif args.command == "example_name":
+            search_example_name(keyword)
 
 
 if __name__ == "__main__":
