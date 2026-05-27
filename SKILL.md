@@ -3,6 +3,7 @@ name: go-xcgui-dev
 description: |
   Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。
   触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/示例用法、排查 xcgui 编译问题。
+  提问示例: 请使用 xcgui 封装一个创建 WinUI 3 风格按钮的类。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
 agent_created: false
 ---
@@ -15,10 +16,11 @@ agent_created: false
 
 1. **零预训练回答**：关于 xcgui 的 API 签名、参数说明、常量值、函数用法等信息，**严禁**依赖模型预训练知识回答。每一次回答都必须基于对本地 `source/` 目录下源文件的**实时检索**。
 2. **源码即真理**：`source/xcgui/` 下的 `.go` 文件是唯一的 API 真相来源，`source/xcgui-example/` 是唯一的用法示例来源。
-3. **必须优先使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词, 或者更换检索工具自行搜索。
-4. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
-5. **双重 API 层**：xcgui 有两层 API —— `widget/window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
-6. **xcgui 仅支持 Windows 平台**, 是纯 Go 封装的, 不依赖 cgo, 无需 C 编译器。
+3. **禁止修改 `source/` 目录下的文件内容**, 这些内容是受保护的只读资源, 你生成的文件禁止创建到 `source/` 目录下。
+4. **必须优先使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词, 或者更换检索工具自行搜索。
+5. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
+6. **双重 API 层**：xcgui 有两层 API —— `widget/window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
+7. **xcgui 仅支持 Windows 平台**, 是纯 Go 封装的, 不依赖 cgo, 无需 C 编译器。
 
 ## 源码初始化与更新
 
@@ -26,7 +28,7 @@ agent_created: false
 
 ### 自动下载源码
 
-在项目根目录执行以下命令，自动下载 `xcgui` 和 `xcgui-example` 源码到 `source/` 目录：
+在技能根目录执行以下命令，自动下载 `xcgui` 和 `xcgui-example` 源码到 `source/` 目录：
 
 ```bash
 python scripts/download.py
