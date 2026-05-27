@@ -8,6 +8,7 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 
 ```
 go-xcgui-dev/
+├── references/			 # 一些可能被引用的文档
 ├── scripts/
 │   ├── search.py        # 源码搜索工具
 │   └── download.py      # 源码下载工具
@@ -25,8 +26,9 @@ go-xcgui-dev/
 可以这样问:
 
 ```
-请使用 xcgui 封装一个创建 WinUI 3 风格按钮的类
-请使用 xcgui 封装一个创建 WinUI 3 风格编辑框的类
+请使用 xcgui 中的 WebView 创建一个现代桌面应用
+请使用 xcgui 封装一个创建 Win11 风格按钮的类
+请使用 xcgui 封装一个创建 Win11 风格编辑框的类
 请查找一下 xcgui 中的窗口置顶函数
 ```
 
