@@ -12,19 +12,12 @@
     python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
 
 示例:
-    python scripts/search.py func Center               # 搜索函数名关键词 (单个关键词)
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
-    python scripts/search.py func 最大化                # 用中文注释搜索函数 (单个关键词)
     python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词用 / 分割)
-    python scripts/search.py const Window_Style        # 搜索常量关键词 (单个关键词)
     python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
-    python scripts/search.py const 阴影窗口             # 用中文注释搜索常量 (单个关键词)
     python scripts/search.py const 窗口/最小化          # 用中文注释搜索常量 (多个关键词用 / 分割)
-    python scripts/search.py event BnClick             # 搜索事件函数名关键词 (单个关键词)
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
-    python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释关键词 (单个关键词)
     python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
-    python scripts/search.py example TabBar            # 搜索示例关键词 (单个关键词)
     python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个关键词用 / 分割)
     python scripts/search.py example 按钮/选中/事件     # 搜索示例关键词 (多个关键词用 / 分割)
     python scripts/search.py list widgets              # 列出 widget 包所有公开对象
@@ -1436,14 +1429,10 @@ def main():
   - `list funcs <对象名>` 和 `list events <对象名>` 命令默认是不会列出以 `Event` 开头的函数的, 除非在最后面再加个 `all` 参数, 一般不需要 `Event` 开头的函数, 这两个命令都会列出 `AddEvent` 开头的函数, 这种事件添加方式更常用
 
 示例:
-  python scripts/search.py func Center               # 搜索函数名关键词 (单个)
   python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个用 / 分割)
-  python scripts/search.py func 最大化                # 用中文注释搜索函数
   python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词)
-  python scripts/search.py const Window_Style        # 搜索常量关键词
   python scripts/search.py const button/check        # 搜索常量关键词 (多个)
   python scripts/search.py const 阴影窗口             # 用中文注释搜索常量
-  python scripts/search.py event BnClick             # 搜索事件函数名关键词
   python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个)
   python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释
   python scripts/search.py example TabBar            # 搜索示例关键词
