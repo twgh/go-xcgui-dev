@@ -7,9 +7,10 @@
     python scripts/search.py const <keyword>        # 搜索常量定义
     python scripts/search.py event <keyword>        # 搜索事件相关
     python scripts/search.py example <keyword>      # 搜索示例代码
-    python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs
+    python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects
     python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
     python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
+    python scripts/search.py list objects <包名>    # 列出指定包的所有公开对象 (含描述)
 
 示例:
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
@@ -24,8 +25,9 @@
     python scripts/search.py list windows              # 列出 window 包所有公开对象
     python scripts/search.py list packages             # 列出所有源码包
     python scripts/search.py list examples             # 列出所有示例
-    python scripts/search.py list events button        # 列出指定对象所有事件函数名
-    python scripts/search.py list funcs button         # 列出指定对象所有方法名(含继承链,含事件)
+    python scripts/search.py list events button        # 列出 Button 的所有事件函数名
+    python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
+    python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
 """
 
 import argparse
@@ -1233,6 +1235,124 @@ def _list_object_events(obj_name: str, include_event_prefix: bool = False) -> No
     color_print(f"  共找到 {len(all_events)} 个事件", C_YELLOW)
 
 
+def _get_type_comment(file_path: Path, type_name: str) -> str:
+    """获取类型定义上方的注释.
+
+    从 Go 文件中提取指定类型定义上方的注释块，作为类型的描述。
+
+    Args:
+        file_path: Go 文件路径
+        type_name: 类型名称
+
+    Returns:
+        注释文本（合并多行注释），如果没有找到则返回空字符串
+    """
+    try:
+        lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return ""
+
+    # 查找类型定义行
+    type_pattern = re.compile(rf'^type\s+{re.escape(type_name)}\s+')
+    type_line_idx = None
+    for i, line in enumerate(lines):
+        if type_pattern.match(line.strip()):
+            type_line_idx = i
+            break
+
+    if type_line_idx is None or type_line_idx == 0:
+        return ""
+
+    # 向上查找注释块
+    comment_lines = []
+    i = type_line_idx - 1
+    while i >= 0:
+        stripped = lines[i].strip()
+        if stripped.startswith("//"):
+            # 去掉 // 前缀，保留注释内容
+            content = stripped[2:].strip()
+            if content:
+                comment_lines.insert(0, content)
+            i -= 1
+        elif stripped == "":
+            # 空行：如果上面有注释，注释块结束
+            if comment_lines:
+                break
+            i -= 1
+        else:
+            # 非注释非空行，注释块结束
+            break
+
+    if not comment_lines:
+        return ""
+
+    # 合并多行注释，用空格连接，并清理多余空白
+    return re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
+
+
+def _list_package_objects(pkg_name: str) -> None:
+    """列出指定包的所有公开对象.
+
+    在 XCGUI_SRC / <pkg_name> 目录下查找所有 .go 文件，
+    提取公开的类型定义及其注释描述。
+
+    Args:
+        pkg_name: 包名（如 widget, window, app, font 等）
+    """
+    pkg_dir = XCGUI_SRC / pkg_name
+    if not pkg_dir.exists():
+        color_print(f"  错误: 包目录不存在: {pkg_dir.relative_to(PROJECT_ROOT)}", C_RED)
+        color_print(f"  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+        return
+
+    found = 0
+    objects = []  # [(type_name, desc, file_path)]
+
+    for go_file in sorted(pkg_dir.glob("*.go")):
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+            continue
+
+        try:
+            text = go_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        # 提取所有公开类型定义
+        # 匹配: type Xxx struct { 或 type Xxx = ...
+        # 只匹配大写字母开头的公开类型
+        type_patterns = [
+            r'^type\s+([A-Z]\w*)\s+struct\s*\{',
+            r'^type\s+([A-Z]\w*)\s*=\s*\w+',
+            r'^type\s+([A-Z]\w*)\s+interface\s*\{',
+            r'^type\s+([A-Z]\w*)\s+func\(',
+        ]
+
+        for pattern in type_patterns:
+            for m in re.finditer(pattern, text, re.MULTILINE):
+                type_name = m.group(1)
+                # 获取类型注释
+                desc = _get_type_comment(go_file, type_name)
+                objects.append((type_name, desc, go_file))
+                found += 1
+
+    if not objects:
+        color_print(f"  未找到 {pkg_name} 包的公开对象", C_YELLOW)
+        return
+
+    # 按类型名排序
+    objects.sort(key=lambda x: x[0])
+
+    # 显示结果
+    for type_name, desc, file_path in objects:
+        rel_path = file_path.relative_to(PROJECT_ROOT)
+        if desc:
+            color_print(f"  {C_BOLD}{C_GREEN}{type_name:25}{C_RESET} {C_GRAY}{desc}{C_RESET}")
+        else:
+            color_print(f"  {C_BOLD}{C_GREEN}{type_name:25}{C_RESET} {C_GRAY}({rel_path.name}){C_RESET}")
+
+    color_print(f"\n  {C_YELLOW}共 {found} 个公开对象{C_RESET}")
+
+
 def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool = False) -> None:
     """列出指定子命令下的所有文件/内容.
 
@@ -1403,6 +1523,15 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
         # 列出指定对象的所有方法 (含继承)
         _list_object_funcs(extra_arg, include_event_prefix)
 
+    elif subcommand == "objects":
+        if not extra_arg:
+            color_print(f"  错误: objects 命令需要指定包名", C_RED)
+            color_print(f"  用法: python scripts/search.py list objects <包名>", C_GRAY)
+            color_print(f"  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+            return
+        # 列出指定包的所有公开对象
+        _list_package_objects(extra_arg)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1420,6 +1549,7 @@ def main():
   list windows       列出 window 包所有公开对象
   list packages      列出所有源码包
   list examples      列出所有示例
+  list objects <包名>       列出指定包的所有公开对象 (含描述)
   list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
   list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
 
@@ -1474,7 +1604,7 @@ def main():
     if args.command == "list":
         # list 命令: list <subcommand> [extra_arg] [all]
         if len(args.args) == 0:
-            color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events/funcs)", C_RED)
+            color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events/funcs/objects)", C_RED)
             sys.exit(1)
         subcommand = args.args[0].lower()
         
