@@ -2,7 +2,7 @@
 name: go-xcgui-dev
 description: |
   Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。当 xcgui 库有更新时，你可以发出"更新 xcgui 源码"或"重新下载源码"指令, 让 AI 更新技能目录中用于参考的源码。
-  提问示例：请使用 xcgui 封装一个创建 Win11 风格编辑框的类。
+  提问示例：请使用 xcgui 的 WebView 写一个现代桌面应用。
   触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/示例用法、排查 xcgui 编译问题。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
 agent_created: false
