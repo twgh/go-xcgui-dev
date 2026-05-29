@@ -9,8 +9,8 @@
     python scripts/search.py example <keyword>      # 搜索示例代码
     python scripts/search.py example_name <keyword> # 搜索示例名或包注释
     python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects
-    python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
-    python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
+    python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
+    python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
     python scripts/search.py list objects <包名>    # 列出指定包的所有公开对象 (含描述)
 
 示例:
@@ -1158,6 +1158,27 @@ def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str], includ
     return results
 
 
+def _is_object_in_edge(obj_name: str) -> bool:
+    """检查对象是否在edge目录中.
+
+    Args:
+        obj_name: 对象名 (不区分大小写)
+
+    Returns:
+        是否在edge目录中
+    """
+    # 构建继承关系映射
+    _, file_map = _build_inheritance_map()
+    
+    # 不区分大小写查找对象
+    for name, file_path in file_map.items():
+        if name.lower() == obj_name.lower():
+            # 检查文件路径是否包含edge目录
+            return "edge" in file_path.replace("\\", "/")
+    
+    return False
+
+
 def _list_object_funcs(obj_name: str, include_event_prefix: bool = False) -> None:
     """列出指定对象及其继承链上的所有公开方法.
 
@@ -1600,6 +1621,9 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
             color_print(f"  用法: python scripts/search.py list events <对象名>", C_GRAY)
             return
         # 列出指定对象的所有事件 (含继承)
+        # 如果对象在edge目录中，自动包含Event开头的函数
+        if _is_object_in_edge(extra_arg):
+            include_event_prefix = True
         _list_object_events(extra_arg, include_event_prefix)
 
     elif subcommand == "funcs":
@@ -1608,6 +1632,9 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
             color_print(f"  用法: python scripts/search.py list funcs <对象名>", C_GRAY)
             return
         # 列出指定对象的所有方法 (含继承)
+        # 如果对象在edge目录中，自动包含Event开头的函数
+        if _is_object_in_edge(extra_arg):
+            include_event_prefix = True
         _list_object_funcs(extra_arg, include_event_prefix)
 
     elif subcommand == "objects":
@@ -1638,13 +1665,13 @@ def main():
   list packages      列出所有源码包
   list examples      列出所有示例
   list objects <包名>       列出指定包的所有公开对象 (含描述)
-  list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数)
-  list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数)
+  list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
+  list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
 
 关键词规则:
   - 用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文, 不区分大小写
   - 关键词除了可以搜索函数/常量/事件定义外, 还可以搜索它们的注释, 在关键词含中文时触发
-  - `list funcs <对象名>` 和 `list events <对象名>` 命令默认是不会列出以 `Event` 开头的函数的, 除非在最后面再加个 `all` 参数, 一般不需要 `Event` 开头的函数, 这两个命令都会列出 `AddEvent` 开头的函数, 这种事件添加方式更常用
+  - `list funcs <对象名>` 和 `list events <对象名>` 命令默认是不会列出以 `Event` 开头的函数的, 除非在最后面再加个 `all` 参数, 一般不需要 `Event` 开头的函数, 这两个命令都会列出 `AddEvent` 开头的函数, 这种事件添加方式更常用. 特别地, 当对象在 edge 目录时, 会自动包含 Event 开头的函数, 因为 edge 目录中的事件是以 `Event` 开头的.
 
 示例:
   python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个用 / 分割)
