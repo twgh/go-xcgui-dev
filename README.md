@@ -2,19 +2,19 @@
 
 Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发。
 
-## 技能目录结构
+## 下载方式
 
-[下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip) 后只保留这些文件即可, 也可以从 https://skillhub.cn/skills/go-xcgui-dev 下载
-
-```
-go-xcgui-dev/
-├── references/			 # 一些可能被引用的文档
-├── scripts/
-│   ├── search.py        # 源码搜索工具
-│   └── download.py      # 源码下载工具
-├── SKILL.md             # 技能定义文件
-```
-
+- [直接下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip)
+- [skillhub](https://skillhub.cn/skills/go-xcgui-dev) (在这里可以看到版本号和更新说明)
+- [modelscope](https://www.modelscope.cn/skills/twgh521/go-xcgui-dev)
+- 命令行下载
+	```bash
+	npx skills add https://www.modelscope.cn/skills/twgh521/go-xcgui-dev
+	# 直接安装到 codebuddy 技能目录, 或者其它的如 cursor
+	npx skills add https://www.modelscope.cn/skills/twgh521/go-xcgui-dev --agent codebuddy
+	# 更新
+	npx skills update
+	```
 ## 技能触发场景
 
 - 使用 xcgui 写代码
