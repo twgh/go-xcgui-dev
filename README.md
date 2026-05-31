@@ -5,7 +5,7 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 ## 下载方式
 
 - [直接下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip)
-- [skillhub](https://skillhub.cn/skills/go-xcgui-dev) (在这里可以看到版本号和更新说明)
+- [skillhub](https://skillhub.cn/skills/go-xcgui-dev) (在这里可以看到更新说明)
 - [modelscope](https://www.modelscope.cn/skills/twgh521/go-xcgui-dev)
 - 命令行下载
 	```bash
