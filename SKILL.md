@@ -30,10 +30,10 @@ agent_created: false
 | # | 禁止行为 | 后果 | 正确做法 |
 |---|---------|------|---------|
 | 1 | **在非 UI 线程操作 UI 元素** | 程序崩溃 | 用 `xc.UI()` 或 `xc.Auto()` 包裹 UI 操作 |
-| 2 | **忘记调用 `Redraw` 就认为界面已更新** | 界面不刷新 | 修改元素后必须手动调用 `Redraw(false)` |
+| 2 | **忘记调用 `Redraw` 就认为界面已更新** | 界面不刷新 | 修改元素后必须手动调用 `Redraw(false)`；列表修改数据后需先 `RefreshRow` 或 `RefreshData` 再 `Redraw` |
 | 3 | **不创建数据适配器就直接使用 List/Tree/ListBox/ComboBox** | 运行时错误 | 先调用 `CreateAdapter()`（参考 `references/Elements that require creating a data adapter.md`） |
 | 4 | **IStream 对象用完后不释放** | 内存泄漏 | 不再使用时调用 `Release()`，无论传参还是返回值 |
-| 5 | **WebView COM 对象用完后不释放** | 内存泄漏 | 手动调用 `Release()`（WebView2_* 系列由 Close 自动释放的除外） |
+| 5 | **WebView COM 对象用完后不释放** | 内存泄漏（COM 对象不被 Go GC 回收） | 手动调用 `Release()`；例外：`WebView2_2`~`WebView2_28` 等内部变量由 `Close()` 自动释放 |
 | 6 | **将炫彩句柄当作 Windows 真实句柄** | 功能异常 | 用 `GetHWND()` 获取真实窗口句柄（`uintptr` 类型） |
 | 7 | **凭模型记忆回答 API 细节，跳过源码检索** | 回答错误 | 必须用 `search.py` 检索 + `read` 确认后再回答 |
 | 8 | **将生成的文件放到 `source/` 或本技能目录下** | 污染源码 | 创建到用户的工作目录中 |
@@ -157,16 +157,12 @@ source/
 
 ## 常见问题
 
+> 核心反例（崩溃/泄漏/刷新等）请参见上方 [🚫 反例与禁止事项](#-反例与禁止事项)。
+
 - Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18
-- **在非 UI 线程操作 UI 会导致程序崩溃**, 对界面库元素的修改操作必须在 UI 线程执行，元素并不是线程安全的, 可使用 `xc.UI` 函数在UI线程执行操作, `xc.Auto` 函数是会自动判断是否在 UI 线程
-- **修改 Webview 的代码要在 UI 线程执行, 就是与视觉相关的方法**, 可使用 `xc.UI` 函数在 UI 线程执行操作, `xc.Auto` 函数是会自动判断是否在 UI 线程
-- **炫彩界面库元素默认是不会自动刷新的**, 所以你修改元素内容或大小等操作后, 需要手动调用该元素的 `Redraw` 方法, 参数一般填 `false` 即可。手动控制刷新性能会更好, 例如修改了列表多行内容, 最后只需要刷新一次。列表需要注意的是修改了数据后要调用 `RefreshRow` 或 `RefreshData` 然后再调用 `Redraw` 
-- 炫彩元素的句柄只是界面库内部维护的序号而已, 并不是 windows 系统中真实的句柄, 比如说你输出窗口的 Handle, 它可能是 1, 炫彩窗口的真实句柄应该用 `GetHWND` 函数来获取，是 `uintptr` 类型的，可以用于 windows api
 - 在动态添加布局元素后可调用 `w.AdjustLayout().Redraw(false)` 以刷新布局
-- `IStream` 对象不再使用了需要调用 `Release` 释放, 不管是你传参的还是函数返回的, 不再使用后都要释放, 以防内存泄漏
-- 获取的 WebView 相关的 com 对象不再使用了需要释放, 以防内存泄漏, 因为获取到的是 com 对象, gc回收了go对象, 但 com 对象不会被go gc回收, 所以需要手动调用 `Release` 释放, 例外情况是由于 `WebView.WebView2_2` 到 `WebView.WebView2_28` 是常用的对象变量(WebView2_*, 序号以后可能会更大), 这些内部声明好的对象变量会在调用 `WebView.Close` 时自动释放, 窗口关闭时会自动调用的, 你查看 `WebView.Close` 的源码可以看到释放的代码, 所以这些不需要你手动释放
 - 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式
-- 生成颜色除了使用 `xc.RGBA` 函数外(函数定义为`func RGBA(r, g, b, a byte) uint32`), 还可以使用 `xc.HexRGB2RGBA` (函数定义为`func HexRGB2RGBA(str string, a byte) uint32`)将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
+- 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可以使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
 
 ## 需要创建数据适配器的元素
 
