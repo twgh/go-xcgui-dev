@@ -163,6 +163,7 @@ source/
 - 在动态添加布局元素后可调用 `w.AdjustLayout().Redraw(false)` 以刷新布局
 - 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式
 - 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可以使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
+- 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可以避免将元素创建到边框或标题上, 你也可以用 `SetBorderSize` 设置边框大小
 
 ## 需要创建数据适配器的元素
 
