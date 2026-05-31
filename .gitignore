@@ -11,3 +11,8 @@ __pycache__/
 # Files
 archive.bat
 打包技能.bat
+
+# Darwin skill artifacts (don't publish)
+result-card.html
+results.tsv
+test-prompts.json
