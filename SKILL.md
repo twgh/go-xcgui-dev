@@ -103,7 +103,7 @@ source/
 | 查看所有示例 | `python scripts/search.py list examples` | 列出所有示例 (含描述) |
 | 不知道包里有什么对象 | `python scripts/search.py list objects <包名>` | 列出包内所有公开对象 (含描述) |
 
-> **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge 包除外），末尾加 `all` 参数可全部列出。`drawx` 对象名是 `Draw`，`imagex` 对象名是 `Image` 和 `ImageSrc`。
+> **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge 包除外），末尾加 `all` 参数可全部列出。
 
 ### Step 2：阅读确认
 
@@ -152,7 +152,7 @@ source/
 
 | 触发条件 | 一线修复 | 仍失败兜底 |
 |----------|----------|-----------|
-| 程序提示"请安装 WebView2 运行时" | 代码中调用 `edge.DownloadWebView2()` 打开官方下载页 | 告知用户手动前往 Microsoft 官网下载安装 |
+| 程序提示"请安装 WebView2 运行时" | 代码中调用 `edge.DownloadWebView2()` 下载小型安装引导程序 | 告知用户手动前往 Microsoft 官网下载安装 |
 | 本机版本低于库要求版本 | 打印警告但仍尝试运行（低版本通常向后兼容） | 告知用户升级 WebView2 运行时以获取最佳兼容性 |
 
 ## 常见问题
