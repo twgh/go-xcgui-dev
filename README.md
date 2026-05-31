@@ -1,6 +1,6 @@
 # go-xcgui-dev 1.0.5
 
-Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发。
+Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发，直接避免 AI 产生幻觉。
 
 ## 下载方式
 
