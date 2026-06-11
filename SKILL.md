@@ -8,7 +8,7 @@ description: |
 agent_created: false
 ---
 
-# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.5
+# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.6
 
 ## 核心准则
 
@@ -201,33 +201,9 @@ func main() {
 
 List, ListView, ListBox, Tree, CombBox, 不创建数据适配器就会报错, 无法存储数据, 怎么创建可读取 `references/Elements that require creating a data adapter.md`
 
-## 常用包参考
-
-| 包          | 用途                              | 导入路径                           |
-| ----------- | --------------------------------- | ---------------------------------- |
-| `xc`        | 底层 C API，所有以 `X` 开头的函数 | `github.com/twgh/xcgui/xc`         |
-| `xcc`       | 所有炫彩常量                      | `github.com/twgh/xcgui/xcc`        |
-| `widget`    | 控件高级封装                      | `github.com/twgh/xcgui/widget`     |
-| `window`    | 窗口高级封装                      | `github.com/twgh/xcgui/window`     |
-| `app`       | 程序(炫彩全局API)                 | `github.com/twgh/xcgui/app`        |
-| `ani`       | 动画高级封装                      | `github.com/twgh/xcgui/ani`        |
-| `ease`      | 缓动函数                          | `github.com/twgh/xcgui/ease`       |
-| `svg`       | SVG 加载处理                      | `github.com/twgh/xcgui/svg`        |
-| `font`      | 字体管理                          | `github.com/twgh/xcgui/font`       |
-| `imagex`    | 图片加载处理                      | `github.com/twgh/xcgui/imagex`     |
-| `edge`      | WebView2 完整封装                 | `github.com/twgh/xcgui/edge`       |
-| `drawx`     | 图形绘制                          | `github.com/twgh/xcgui/drawx`      |
-| `bkmanager` | 背景管理器                        | `github.com/twgh/xcgui/bkmanager`  |
-| `bkobj`     | 背景对象                          | `github.com/twgh/xcgui/bkobj`      |
-| `adapter`   | 数据适配器                        | `github.com/twgh/xcgui/adapter`    |
-| `res`       | 资源管理                          | `github.com/twgh/xcgui/res`        |
-| `tmpl`      | 列表项模板                        | `github.com/twgh/xcgui/tmpl`       |
-| `common`    | 公共辅助函数                      | `github.com/twgh/xcgui/common`     |
-| `wapi`      | Windows API 封装                  | `github.com/twgh/xcgui/wapi`       |
-| `wutil`     | 使用 Windows API 封装常用函数     | `github.com/twgh/xcgui/wapi/wutil` |
-| `wnd`       | 使用 Windows API 封装窗口操作函数 | `github.com/twgh/xcgui/wapi/wnd`   |
-
 ## 源码目录地图
+
+> `xcgui` 库中所有包的导入路径均以 `github.com/twgh/xcgui/` 为前缀，例如 `github.com/twgh/xcgui/xc`、`github.com/twgh/xcgui/app`。下文目录树中的目录名直接拼接此前缀即可得到完整导入路径。
 
 所有源码位于 `source/` 下，分两大目录：
 
@@ -268,7 +244,7 @@ source/
 │   ├── wapi/                 # Windows API 封装
 │   │   ├── wnd/              # 基于wapi封装窗口操作
 │   │   └── wutil/            # 基于wapi封装工具函数
-│   ├── tmpl/                 # 项模板
+│   ├── tmpl/                 # 列表项模板
 │   └── README.md             # xcgui 介绍
 │
 └── xcgui-example/            # 示例代码
