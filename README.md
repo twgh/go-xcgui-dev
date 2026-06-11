@@ -1,19 +1,17 @@
-# go-xcgui-dev 1.0.5
+# go-xcgui-dev 1.0.6
 
 Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发，直接避免 AI 产生幻觉。
 
 ## 下载方式
 
 - [直接下载仓库源码](https://github.com/twgh/go-xcgui-dev/archive/refs/heads/main.zip)
+
 - [skillhub](https://skillhub.cn/skills/go-xcgui-dev) (在这里可以看到更新说明)
-- [modelscope](https://www.modelscope.cn/skills/twgh521/go-xcgui-dev)
-- 命令行下载
+
+- 使用命令行工具 `xc` 下载
 	```bash
-	npx skills add https://www.modelscope.cn/skills/twgh521/go-xcgui-dev
-	# 直接安装到 codebuddy 技能目录, 或者其它的如 cursor
-	npx skills add https://www.modelscope.cn/skills/twgh521/go-xcgui-dev --agent codebuddy
-	# 更新
-	npx skills update
+	go install -ldflags="-s -w" -trimpath github.com/twgh/xc@latest
+	xc getskill
 	```
 ## 技能触发场景
 
@@ -36,4 +34,5 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 
 - xcgui Go 绑定：https://github.com/twgh/xcgui
 - xcgui 示例代码：https://github.com/twgh/xcgui-example
+- `xc` 命令行工具: https://github.com/twgh/xc
 
