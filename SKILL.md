@@ -283,12 +283,27 @@ source/
     │   ├── MouseCursor/      # 鼠标光标
     │   ├── RegisterHotKey/   # 注册热键
     │   ├── SendEvent/        # 发送事件
-    │   ├── BeautifyEdit/     # 美化编辑框
-    │   └── SetWindowIcon/    # 设置窗口图标
+    │   ├── BeautifyEdit/     # 美化编辑框(自绘)
+    │   ├── BeautifyEdit2/     # 美化编辑框(使用背景管理器)
+    │   ├── BeautifySliderBar/    # 美化滑块条
+    │   ├── BeautifyCheckBox/     # 美化复选框
+    │   ├── BeautifyRadioButton/  # 美化单选按钮
+    │   ├── BeautifyButton/     # 美化按钮
+    │   ├── BeautifyProgressBar/     # 美化进度条
+    │   ├── BeautifyToggleButton/     # 美化开关按钮
+    │   ├── SetWindowIcon/    # 设置窗口图标
+    │   └── Draw/                # 绘制示例
+    │       ├── draw_basic_shapes/     # Draw 基本图形 — 矩形/圆角/椭圆/线/弧/多边形/虚线
+    │       ├── draw_custom_control/     # Draw 实战 — 自绘圆角按钮/窗口底栏
+    │       ├── draw_gradient/     # Draw 渐变填充 + 高级设置 — 渐变/裁剪/偏移/焦点框
+    │       ├── draw_image_svg/     # Draw 图片与SVG绘制
+    │       └── draw_text/    # Draw 文本绘制 — TextOut / DrawText / 对齐 / 字体 / 下划线
     │
     ├── webview/              # WebView2 示例
     │   ├── SimpleWebView/    # 简单 WebView
     │   ├── Chart/            # 图表
+    │   ├── BindTypes/        # 演示 WebView 的 Bind 函数支持的参数和返回值类型
+    │   ├── modern-desktop-app/   # 现代风格桌面应用
     │   ├── VueAndVite/       # Vue+Vite 集成
     │   ├── CalcMD5/          # JS-Go 互调
     │   ├── EmbedAssets/      # 嵌入资源
@@ -321,19 +336,19 @@ import (
 
 func main() {
     app.InitOrExit()                          // 1. 初始化
-    a := app.New(true)                         // 2. 创建 App 实例
-    a.EnableAutoDPI(true).EnableDPI(true)      // 3. 启用 DPI
+    a := app.New()                         // 2. 创建 App 实例
+    a.EnableAutoDPI().EnableDPI()      // 3. 启用 DPI
 
     w := window.New(0, 0, 600, 400, "标题", 0, xcc.Window_Style_Default) // 4. 创建窗口
 
     // 5. 创建控件并绑定事件
-    btn := widget.NewButton(10, 10, 100, 30, "按钮", w.Handle)
+    btn := widget.NewButton(10, 40, 100, 30, "按钮", w.Handle)
     btn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
         w.MessageBox("提示", "你点击了按钮", xcc.MessageBox_Flag_Ok, xcc.Window_Style_Modal)
         return 0
     })
 
-    w.Show(true)                               // 6. 显示窗口
+    w.Show()                               // 6. 显示窗口
     a.Run()                                    // 7. 消息循环
     a.Exit()                                   // 8. 退出
 }
@@ -344,17 +359,17 @@ func main() {
 | 包 | 用途 | 导入路径 |
 |----|------|---------|
 | `xc` | 底层 C API，所有以 `X` 开头的函数 | `github.com/twgh/xcgui/xc` |
-| `xcc` | 所有炫彩常量和枚举 | `github.com/twgh/xcgui/xcc` |
+| `xcc` | 所有炫彩常量 | `github.com/twgh/xcgui/xcc` |
 | `widget` | 控件高级封装 | `github.com/twgh/xcgui/widget` |
 | `window` | 窗口高级封装 | `github.com/twgh/xcgui/window` |
-| `app` | 应用生命周期 | `github.com/twgh/xcgui/app` |
+| `app` | 炫彩全局函数 | `github.com/twgh/xcgui/app` |
 | `ani` | 动画高级封装 | `github.com/twgh/xcgui/ani` |
 | `ease` | 缓动函数 | `github.com/twgh/xcgui/ease` |
 | `svg` | SVG 加载处理 | `github.com/twgh/xcgui/svg` |
 | `font` | 字体管理 | `github.com/twgh/xcgui/font` |
 | `imagex` | 图片加载处理 | `github.com/twgh/xcgui/imagex` |
 | `edge` | WebView2 完整封装 | `github.com/twgh/xcgui/edge` |
-| `drawx` | 绘制辅助 | `github.com/twgh/xcgui/drawx` |
+| `drawx` | 绘制 | `github.com/twgh/xcgui/drawx` |
 | `bkmanager` | 背景管理器 | `github.com/twgh/xcgui/bkmanager` |
 | `bkobj` | 背景对象 | `github.com/twgh/xcgui/bkobj` |
 | `adapter` | 数据适配器 | `github.com/twgh/xcgui/adapter` |
@@ -363,8 +378,6 @@ func main() {
 | `wapi` | Windows API 封装 | `github.com/twgh/xcgui/wapi` |
 | `wutil` | 使用 Windows API 封装常用函数 | `github.com/twgh/xcgui/wapi/wutil` |
 | `wnd` | 使用 Windows API 封装窗口操作函数 | `github.com/twgh/xcgui/wapi/wnd` |
-
-如果找不到对应示例，可用 `python scripts/search.py example <关键词>` 搜索。
 
 ## xcgui 源码的编码规范速查
 

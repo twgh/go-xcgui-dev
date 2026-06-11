@@ -55,7 +55,8 @@ btn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 
 ```go
 hBtn := xc.XBtn_Create(10, 10, 100, 30, "按钮", w.Handle)
-xc.XBtn_AddEvent_BnClick(hBtn, func(hEle int, pbHandled *bool) int {
+xc.XEle_RegEventC1(hBtn, xcc.XE_BNCLICK, func(hEle int, pbHandled *bool) int {
+    // 处理点击
     return 0
 })
 ```
@@ -66,35 +67,12 @@ xc.XBtn_AddEvent_BnClick(hBtn, func(hEle int, pbHandled *bool) int {
 - 底层 `xc.XBtn_*` 直接操作 int 句柄，需手动管理生命周期
 - 所有底层函数签名中 `hEle`/`hWindow` 等句柄参数都在第一位
 
-### 事件回调签名
-
-```go
-// 元素事件：标准签名
-func(hEle int, pbHandled *bool) int
-
-// 窗口事件
-func(hWindow int, pbHandled *bool) int
-
-// 鼠标事件（额外参数）
-func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int
-
-// 绘制事件
-func(hEle int, hDraw int, pbHandled *bool) int
-
-// 销毁事件
-func(hWindow int, pbHandled *bool) int
-
-// 鼠标进入/离开（离开事件多一个参数）
-func(hEle int, pbHandled *bool) int           // MouseStay
-func(hEle, hEleStay int, pbHandled *bool) int // MouseLeave
-```
-
 ### bool 参数可选化约定
 
 最后一个 `bool` 参数为 `variadic ...bool`：
 
 ```go
-// 如果是 Enable 类型的函数, 那么使其默认为 true
+// 如果是 Enable 开头的函数, 那么使其默认为 true
 func Xxx_Enable(hEle int, bEnable ...bool)
 
 // 调用时：不传参数使用默认值 true
@@ -102,5 +80,3 @@ Xxx_Enable(hEle)        // 相当于 bEnable=true
 Xxx_Enable(hEle, true)
 Xxx_Enable(hEle, false)
 ```
-
-### 
