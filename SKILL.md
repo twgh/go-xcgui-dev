@@ -8,7 +8,7 @@ description: |
 agent_created: false
 ---
 
-# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.6
+# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.7
 
 ## 核心准则
 
@@ -18,7 +18,7 @@ agent_created: false
 2. **源码即真理**：`source/xcgui/` 下的 `.go` 文件是唯一的 API 真相来源，`source/xcgui-example/` 是唯一的用法示例来源。
 3. **必须优先使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词, 或者更换检索工具自行搜索。
 4. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
-5. **双重 API 层**：xcgui 有两层 API —— `widget,window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可以使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
+5. **双重 API 层**：xcgui 有两层 API —— `widget,window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
 6. **xcgui 是纯 Go 封装的**, 不依赖 cgo, 无需 C 编译器。
 7. **禁止修改 `source/` 目录下的文件内容**, 这些内容是受保护的只读资源, 你生成的文件禁止创建到 `source/` 目录下。
 8. **禁止将你生成的文件创建到本技能目录下**。
@@ -162,8 +162,10 @@ source/
 - Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18
 - 在动态添加布局元素后可调用 `w.AdjustLayout().Redraw(false)` 以刷新布局
 - 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式
-- 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可以使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
-- 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可以避免将元素创建到边框或标题上, 你也可以用 `SetBorderSize` 设置边框大小
+- 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
+- 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上, 你也可用 `SetBorderSize` 设置边框大小
+- xcgui 窗口的 Handle 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api
+- 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
 
 ## 最简单标准代码
 
@@ -195,6 +197,12 @@ func main() {
     a.Run()                                    // 7. 消息循环
     a.Exit()                                   // 8. 退出
 }
+```
+
+## 编译程序的命令
+
+```bash
+go build -ldflags="-s -w -H windowsgui" -trimpath
 ```
 
 ## 需要创建数据适配器的元素
@@ -348,6 +356,7 @@ source/
     │   ├── SaveMemory/       # 内存优化
     │   ├── RoundedShadowWindow/ # 圆角阴影窗口
     │   ├── AutomaticInstallWebView2Runtime/ # 自动安装 WebView2 运行时
+    │   ├── WebViewPartiallyTransparent/ # WebView局部透明,鼠标穿透
     │   └── WebResourceRequestedEvent/ # 资源请求事件
     │
     └── HUMUI/                # 现代化 UI 示例 (2 个)
