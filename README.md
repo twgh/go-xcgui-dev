@@ -9,10 +9,10 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 - [skillhub](https://skillhub.cn/skills/go-xcgui-dev) (在这里可以看到更新说明)
 
 - 使用命令行工具 `xc` 下载
-	```bash
-	go install -ldflags="-s -w" -trimpath github.com/twgh/xc@latest
-	xc getskill
-	```
+    ```bash
+    go install -ldflags="-s -w" -trimpath github.com/twgh/xc@latest
+    xc getskill
+    ```
 ## 技能触发场景
 
 - 使用 xcgui 写代码
