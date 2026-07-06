@@ -413,10 +413,10 @@ def search_func(keyword: str) -> None:
                 continue
 
             if is_chinese:
-                # ── 中文搜索：通过注释过滤 ──
-                comment = _get_func_comment(lines, func_idx)
-                # 检查所有关键词是否都在注释中（不区分大小写）
-                if not all(kw in comment for kw in keywords):
+                # ── 中文搜索：注释 + 函数定义行 (中英关键词均不区分大小写) ──
+                comment = _get_func_comment(lines, func_idx).lower()
+                line_lower = line.lower()
+                if not all(kw.lower() in comment or kw.lower() in line_lower for kw in keywords):
                     continue
             else:
                 # ── 英文搜索：在函数定义行中搜索（含接收者类型），不区分大小写 ──
@@ -496,9 +496,10 @@ def search_type(keyword: str) -> None:
                 continue
 
             if is_chinese:
-                # 中文搜索：在类型名上方的注释中搜索
-                comment = _get_func_comment(lines, i)
-                if not all(kw in comment for kw in keywords):
+                # 中文搜索：注释 + 类型定义行 (中英关键词均不区分大小写)
+                comment = _get_func_comment(lines, i).lower()
+                line_lower = line.lower()
+                if not all(kw.lower() in comment or kw.lower() in line_lower for kw in keywords):
                     continue
             else:
                 # 英文搜索：在类型定义行中搜索（含类型名），不区分大小写
@@ -792,10 +793,10 @@ def search_event(keyword: str) -> None:
                 continue
 
             if is_chinese:
-                # ── 中文搜索：通过注释过滤 ──
-                comment = _get_func_comment(lines, i)
-                # 检查所有关键词是否都在注释中
-                if not all(kw in comment for kw in keywords):
+                # ── 中文搜索：注释 + 函数定义行 (中英关键词均不区分大小写) ──
+                comment = _get_func_comment(lines, i).lower()
+                line_lower = line.lower()
+                if not all(kw.lower() in comment or kw.lower() in line_lower for kw in keywords):
                     continue
             else:
                 # ── 英文搜索：在函数定义行中搜索，不区分大小写 ──
