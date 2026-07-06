@@ -3,7 +3,7 @@ name: go-xcgui-dev
 description: |
   Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。当 xcgui 库有更新时，你可以发出"更新 xcgui 源码"或"重新下载源码"指令, 让 AI 更新技能目录中用于参考的源码。
   提问示例：请使用 xcgui 的 WebView 写一个现代桌面应用。
-  触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/示例用法、排查 xcgui 编译问题。
+  触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/类型/结构体/示例用法、排查 xcgui 编译问题。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
 agent_created: false
 ---
@@ -167,7 +167,7 @@ source/
 - 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上, 你也可用 `SetBorderSize` 设置边框大小
 - xcgui 窗口的 Handle 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api
 - 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
-- 如果文字中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`
+- 如果文本中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`
 
 ## 最简单标准代码
 
