@@ -848,7 +848,7 @@ def search_example_name(keyword: str) -> None:
 
     found = 0
 
-    # 递归收集所有包含 main 包的示例目录 (与 list examples 保持一致, 支持任意深度)
+    # 递归收集所有包含 main 包的示例目录
     example_dirs: list[Path] = []
 
     def _is_main_example(d: Path) -> bool:
@@ -904,15 +904,9 @@ def search_example_name(keyword: str) -> None:
         relative = ex_dir.relative_to(PROJECT_ROOT)
 
         # 显示结果
-        if is_chinese:
-            color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
-            print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+        color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
+        if package_comment:
             print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
-        else:
-            color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
-            print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
-            if package_comment:
-                print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
         print()
 
     if found:
