@@ -166,6 +166,7 @@ source/
 - 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上, 你也可用 `SetBorderSize` 设置边框大小
 - xcgui 窗口的 Handle 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api
 - 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
+- 如果文字中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`
 
 ## 最简单标准代码
 
@@ -209,159 +210,49 @@ go build -ldflags="-s -w -H windowsgui" -trimpath
 
 List, ListView, ListBox, Tree, CombBox, 不创建数据适配器就会报错, 无法存储数据, 怎么创建可读取 `references/Elements that require creating a data adapter.md`
 
-## 源码目录地图
+## XCGUI源码目录地图
 
 > `xcgui` 库中所有包的导入路径均以 `github.com/twgh/xcgui/` 为前缀，例如 `github.com/twgh/xcgui/xc`、`github.com/twgh/xcgui/app`。下文目录树中的目录名直接拼接此前缀即可得到完整导入路径。
 
-所有源码位于 `source/` 下，分两大目录：
-
 ```
 source/
-├── xcgui/                    # 主库源码
-│   ├── xc/                   # 底层 C API 绑定 — 所有 X* 函数, 所有炫彩struct
-│   ├── xcc/                  # 常量定义
-│   │   ├── xcconst.go        # 核心常量
-│   │   ├── combinedstate.go  # 组合状态常量
-│   │   ├── elementevent.go   # 元素事件常量
-│   │   ├── windowevent.go    # 窗口事件常量
-│   │   └── xml.go            # XML 相关常量
-│   ├── widget/               # 控件封装 — Button, Edit, List, Table, Tree, ...
-│   ├── window/               # 窗口封装
-│   │   ├── window.go         # 基础窗口
-│   │   ├── framewindow.go    # 框架窗口
-│   │   ├── modalwindow.go    # 模态窗口
-│   │   ├── floatwindow.go    # 浮动窗口
-│   │   ├── windowbase.go     # 窗口基类
-│   │   └── trayicon.go       # 托盘图标
-│   ├── ani/                  # 动画高级封装
-│   ├── ease/                 # 缓动函数
-│   ├── svg/                  # SVG 处理
-│   ├── drawx/                # 图形绘制
-│   ├── font/                 # 字体管理
-│   ├── imagex/               # 图片处理
-│   ├── res/                  # 资源管理
-│   ├── tf/                   # 便捷创建窗口方便测试
-│   ├── edge/                 # WebView2 封装 — ICoreWebView2* 接口
-│   │   └── webviewloader/    # WebView2 运行时加载
-│   ├── app/                  # 应用生命周期,炫彩全局API
-│   ├── common/               # 公共函数
-│   ├── adapter/              # 数据适配器
-│   ├── bkmanager/            # 背景管理器
-│   ├── bkobj/                # 背景对象
-│   ├── objectbase/           # 对象基类
-│   ├── wapi/                 # Windows API 封装
-│   │   ├── wnd/              # 基于wapi封装窗口操作
-│   │   └── wutil/            # 基于wapi封装工具函数
-│   ├── tmpl/                 # 列表项模板
-│   └── README.md             # xcgui 介绍
-│
-└── xcgui-example/            # 示例代码
-    ├── Basic/                # 基础示例
-    │   ├── SimpleWindow/     # 简单窗口 (入门必看)
-    │   ├── ButtonImage/      # 图片按钮
-    │   ├── ButtonSvg/        # SVG 按钮
-    │   ├── FrameWindow/      # 框架窗口
-    │   ├── ModalWindow/      # 模态窗口
-    │   ├── List/List2/       # 列表控件
-    │   ├── ListView/         # 列表视图
-    │   ├── TabBar/           # 标签栏/Tab条
-    │   ├── ToolBar/          # 工具栏
-    │   ├── ComboBox/         # 下拉框
-    │   ├── Edit/             # 编辑框
-    │   ├── Tree/             # 树形控件
-    │   ├── Menu/		      # 菜单
-    │   ├── MenuBar/	      # 菜单条
-    │   ├── ProgressBar/      # 进度条
-    │   ├── SliderBar/        # 滑动条
-    │   ├── DateTime/         # 日期时间
-    │   ├── MonthCal/         # 月历
-    │   ├── ScrollBar/        # 滚动条
-    │   ├── Gif/              # GIF 动画
-    │   ├── Timer/            # 定时器
-    │   ├── ShapePicture/     # 形状图片
-    │   ├── ShapeText/        # 形状文本
-    │   ├── CheckButton/      # 复选框按钮
-    │   ├── RadioButton/      # 单选按钮
-    │   ├── ListBox/          # 列表框
-    │   ├── ChooseColor/      # 颜色选择
-    │   ├── OpenFile/         # 调用 wapi 打开/保存文件, 浏览文件夹
-    │   ├── DropFiles/        # 拖放文件
-    │   ├── ElementEvent/     # 元素事件
-    │   ├── EventInterception/# 事件拦截
-    │   ├── MultiWindow/      # 多窗口
-    │   ├── SetDefaultFont/   # 设置默认字体
-    │   ├── AutoDpi/          # 自适应 DPI
-    │   ├── MemoryLoadImage/  # 内存加载图片
-    │   ├── LoadLayoutFromString/ # 从字符串加载布局
-    │   ├── MultithreadOperationUI/  # 多线程操作 UI
-    │   ├── MultithreadOperationUI2/ # 多线程操作 UI(2)
-    │   ├── ThreadOperationUI/    # 在非UI线程操作UI
-    │   ├── WindowBkColor/    # 窗口背景色
-    │   └── uidesigner/       # UI 设计器示例
-    │
-    ├── Advanced/             # 高级示例
-    │   ├── Animation/        # 动画特效大全
-    │   ├── TabControl/       # 选项卡切换控制
-    │   ├── SideNavigation/   # 侧边导航
-    │   ├── SvgDraw/          # SVG 绘制
-    │   ├── AudioPlayer/      # 音频播放器
-    │   ├── Editor/           # 编辑器
-    │   ├── TrayIcon/         # 系统托盘
-    │   ├── TrayIcon2/        # 系统托盘(2)
-    │   ├── VirtualTable1/    # 虚表
-    │   ├── VirtualTable2/    # 虚表排序
-    │   ├── Attach/           # 附加窗口
-    │   ├── DebugInfo/        # 调试信息
-    │   ├── DrawMenu/         # 自绘菜单
-    │   ├── DrawRoundButton/  # 自绘圆角按钮
-    │   ├── Ease_All/         # 缓动函数大全
-    │   ├── Ease_Easy/        # 简易缓动
-    │   ├── GoImage/          # Go 图片到炫彩图片
-    │   ├── HideTaskbarIcon/  # 隐藏任务栏图标
-    │   ├── HideTaskbarIcon2/ # 隐藏任务栏图标(2)
-    │   ├── HookKeyboard/     # 键盘钩子
-    │   ├── HookMouse/        # 鼠标钩子
-    │   ├── MouseCursor/      # 鼠标光标
-    │   ├── RegisterHotKey/   # 注册热键
-    │   ├── SendEvent/        # 发送事件
-    │   ├── BeautifyEdit/     # 美化编辑框(自绘)
-    │   ├── BeautifyEdit2/     # 美化编辑框(使用背景管理器)
-    │   ├── BeautifySliderBar/    # 美化滑块条
-    │   ├── BeautifyCheckBox/     # 美化复选框
-    │   ├── BeautifyRadioButton/  # 美化单选按钮
-    │   ├── BeautifyButton/     # 美化按钮
-    │   ├── BeautifyProgressBar/     # 美化进度条
-    │   ├── BeautifyToggleButton/     # 美化开关按钮
-    │   ├── SetWindowIcon/    # 设置窗口图标
-    │   └── Draw/                # 绘制示例
-    │       ├── draw_basic_shapes/     # Draw 基本图形 — 矩形/圆角/椭圆/线/弧/多边形/虚线
-    │       ├── draw_custom_control/     # Draw 实战 — 自绘圆角按钮/窗口底栏
-    │       ├── draw_gradient/     # Draw 渐变填充 + 高级设置 — 渐变/裁剪/偏移/焦点框
-    │       ├── draw_image_svg/     # Draw 图片与SVG绘制
-    │       └── draw_text/    # Draw 文本绘制 — TextOut / DrawText / 对齐 / 字体 / 下划线
-    │
-    ├── webview/              # WebView2 示例
-    │   ├── SimpleWebView/    # 简单 WebView
-    │   ├── Chart/            # 图表
-    │   ├── BindTypes/        # 演示 WebView 的 Bind 函数支持的参数和返回值类型
-    │   ├── modern-desktop-app/   # 现代风格桌面应用
-    │   ├── VueAndVite/       # Vue+Vite 集成
-    │   ├── CalcMD5/          # JS-Go 互调
-    │   ├── EmbedAssets/      # 嵌入资源
-    │   ├── SharedBuffer/     # 共享缓冲区
-    │   ├── CustomSchemeRegistration/ # 自定义协议
-    │   ├── CreateByLayoutEle/ #  WebView2 综合示例(事件用法最全)
-    │   ├── CreateByWindow/   # 创建WebView在窗口,仍然使用炫彩窗口标题栏
-    │   ├── EnvironmentOptions/ # WebView环境选项
-    │   ├── SaveMemory/       # 内存优化
-    │   ├── RoundedShadowWindow/ # 圆角阴影窗口
-    │   ├── AutomaticInstallWebView2Runtime/ # 自动安装 WebView2 运行时
-    │   ├── WebViewPartiallyTransparent/ # WebView局部透明,鼠标穿透
-    │   └── WebResourceRequestedEvent/ # 资源请求事件
-    │
-    └── HUMUI/                # 现代化 UI 示例 (2 个)
-        ├── HouTai017/        # 后台管理
-        └── YanZheng018/      # 登录/注册窗口
+└── xcgui/                    # 主库源码
+   ├── xc/                   # 底层 C API 绑定 — 所有 X* 函数, 所有炫彩struct
+   ├── xcc/                  # 常量定义
+   │   ├── xcconst.go        # 核心常量
+   │   ├── combinedstate.go  # 组合状态常量
+   │   ├── elementevent.go   # 元素事件常量
+   │   ├── windowevent.go    # 窗口事件常量
+   │   └── xml.go            # XML 相关常量
+   ├── widget/               # 控件封装 — Button, Edit, List, Table, Tree, ...
+   ├── window/               # 窗口封装
+   │   ├── window.go         # 基础窗口
+   │   ├── framewindow.go    # 框架窗口
+   │   ├── modalwindow.go    # 模态窗口
+   │   ├── floatwindow.go    # 浮动窗口
+   │   ├── windowbase.go     # 窗口基类
+   │   └── trayicon.go       # 托盘图标
+   ├── ani/                  # 动画高级封装
+   ├── ease/                 # 缓动函数
+   ├── svg/                  # SVG 处理
+   ├── drawx/                # 图形绘制
+   ├── font/                 # 字体管理
+   ├── imagex/               # 图片处理
+   ├── res/                  # 资源管理
+   ├── tf/                   # 便捷创建窗口方便测试
+   ├── edge/                 # WebView2 封装 — ICoreWebView2* 接口
+   │   └── webviewloader/    # WebView2 运行时加载
+   ├── app/                  # 应用生命周期,炫彩全局API
+   ├── common/               # 公共函数
+   ├── adapter/              # 数据适配器
+   ├── bkmanager/            # 背景管理器
+   ├── bkobj/                # 背景对象
+   ├── objectbase/           # 对象基类
+   ├── wapi/                 # Windows API 封装
+   │   ├── wnd/              # 基于wapi封装窗口操作
+   │   └── wutil/            # 基于wapi封装工具函数
+   ├── tmpl/                 # 列表项模板
+   └── README.md             # xcgui 介绍
 ```
 
 ## xcgui 源码的编码规范速查
