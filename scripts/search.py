@@ -1504,21 +1504,20 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
     elif subcommand == "examples":
         if EXAMPLE_SRC.exists():
             for cat_dir in sorted(EXAMPLE_SRC.iterdir()):
-                if not cat_dir.is_dir():
+                if not cat_dir.is_dir() or cat_dir.name.startswith("."):
                     continue
                 color_print(f"\n  [{cat_dir.name}]", C_CYAN, bold=True)
                 for ex_dir in sorted(cat_dir.iterdir()):
-                    if ex_dir.is_dir():
+                    if ex_dir.is_dir() and not ex_dir.name.startswith("."):
                         # 跳过 deprecated.go、doc.go 和 _test.go 文件
                         go_files = [f for f in ex_dir.glob("*.go")
                                     if f.name not in {"deprecated.go", "doc.go"}
                                     and not f.name.endswith("_test.go")]
-                        count = len(go_files)
                         desc = ""
                         if go_files:
                             # 使用辅助函数获取合并后的包注释
                             desc = _get_package_comment(go_files[0])
-                        color_print(f"    {ex_dir.name:35} {C_GRAY}{desc} ({count} 文件){C_RESET}")
+                        color_print(f"    {ex_dir.name:35} {C_GRAY}{desc}{C_RESET}")
 
     elif subcommand == "packages":
         # 递归查找所有包含 .go 文件的目录（排除测试文件和废弃文件）
