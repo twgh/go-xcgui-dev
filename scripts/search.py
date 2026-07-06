@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""xcgui 源码搜索工具 — 查函数 / 常量 / 事件 / 示例.
+"""xcgui 源码搜索工具 — 查函数 / 常量 / 事件 / 类型 / 结构体 / 示例.
 
 用法:
     python scripts/search.py func <keyword>         # 搜索函数定义
@@ -13,6 +13,7 @@
     python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
     python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
     python scripts/search.py list objects <包名>    # 列出指定包的所有公开对象 (含描述)
+    python scripts/search.py list pkg_funcs <包名>  # 列出指定包的所有公开非对象函数 (包级函数, 无接收者)
 
 示例:
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
@@ -32,6 +33,7 @@
     python scripts/search.py list events button        # 列出 Button 的所有事件函数名
     python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
     python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
+    python scripts/search.py list pkg_funcs svg        # 列出 svg 包所有公开非对象函数 (包级函数)
     python scripts/search.py example_name 美化/编辑框   # 搜索示例包注释
     python scripts/search.py example_name draw/button  # 搜索示例名
 """
@@ -1582,6 +1584,67 @@ def _list_package_objects(pkg_name: str) -> None:
     color_print(f"\n  {C_YELLOW}共 {found} 个公开对象{C_RESET}")
 
 
+def _list_package_funcs(pkg_name: str) -> None:
+    """列出指定包的所有公开非对象函数 (包级函数, 无接收者).
+
+    在 XCGUI_SRC / <pkg_name> 目录下查找所有 .go 文件，
+    提取大写的包级函数定义 (func Xxx(...), 无接收者) 及注释描述。
+
+    Args:
+        pkg_name: 包名（如 widget, window, app, font 等）
+    """
+    pkg_dir = XCGUI_SRC / pkg_name
+    if not pkg_dir.exists():
+        color_print(f"  错误: 包目录不存在: {pkg_dir.relative_to(PROJECT_ROOT)}", C_RED)
+        color_print(f"  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+        return
+
+    found = 0
+    funcs = []  # [(func_name, desc, file_path, line_no)]
+
+    for go_file in sorted(pkg_dir.glob("*.go")):
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+            continue
+
+        try:
+            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+
+        for i, line in enumerate(lines):
+            # 只匹配包级函数 (无接收者): func Xxx(...)
+            # 形如 func (b *Button) SetText(...) 的方法不会匹配 (func 后紧跟 '(')
+            m = re.match(r'^\s*func\s+([A-Z]\w*)\s*\(', line)
+            if not m:
+                continue
+            func_name = m.group(1)
+            # 获取函数注释
+            comment = _get_func_comment(lines, i)
+            funcs.append((func_name, comment, go_file, i + 1))
+            found += 1
+
+    if not funcs:
+        color_print(f"  未找到 {pkg_name} 包的公开非对象函数", C_YELLOW)
+        return
+
+    # 按函数名排序
+    funcs.sort(key=lambda x: x[0])
+
+    # 计算最大函数名长度用于对齐
+    max_func_len = max(len(fn) for fn, _, _, _ in funcs)
+
+    # 显示结果
+    for func_name, comment, file_path, line_no in funcs:
+        rel_path = file_path.relative_to(PROJECT_ROOT)
+        if comment:
+            padding = " " * (max_func_len - len(func_name))
+            color_print(f"  {C_BOLD}{C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+        else:
+            color_print(f"  {C_BOLD}{C_GREEN}{func_name:40}{C_RESET} {C_GRAY}({rel_path.name}:{line_no}){C_RESET}")
+
+    color_print(f"\n  {C_YELLOW}共 {found} 个公开非对象函数{C_RESET}")
+
+
 def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool = False) -> None:
     """列出指定子命令下的所有文件/内容.
 
@@ -1796,6 +1859,15 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
         # 列出指定包的所有公开对象
         _list_package_objects(extra_arg)
 
+    elif subcommand == "pkg_funcs":
+        if not extra_arg:
+            color_print(f"  错误: pkg_funcs 命令需要指定包名", C_RED)
+            color_print(f"  用法: python scripts/search.py list pkg_funcs <包名>", C_GRAY)
+            color_print(f"  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+            return
+        # 列出指定包的所有公开非对象函数 (包级函数, 无接收者)
+        _list_package_funcs(extra_arg)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1816,6 +1888,7 @@ def main():
   list packages      列出所有源码包
   list examples      列出所有示例
   list objects <包名>       列出指定包的所有公开对象 (含描述)
+  list pkg_funcs <包名>     列出指定包的所有公开非对象函数 (包级函数, 无接收者, 按函数名排序)
   list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
   list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
 
@@ -1825,19 +1898,26 @@ def main():
   - `list funcs <对象名>` 和 `list events <对象名>` 命令默认是不会列出以 `Event` 开头的函数的, 除非在最后面再加个 `all` 参数, 一般不需要 `Event` 开头的函数, 这两个命令都会列出 `AddEvent` 开头的函数, 这种事件添加方式更常用. 特别地, 当对象在 edge 目录时, 会自动包含 Event 开头的函数, 因为 edge 目录中的事件是以 `Event` 开头的.
 
 示例:
-  python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个用 / 分割)
-  python scripts/search.py func 窗口/居中             # 用中文注释搜索函数 (多个关键词)
-  python scripts/search.py const button/check        # 搜索常量关键词 (多个)
-  python scripts/search.py const 阴影窗口             # 用中文注释搜索常量
-  python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个)
-  python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释
-  python scripts/search.py type WebViewOptions       # 搜索类型定义 (struct/interface)
-  python scripts/search.py type 圆角矩形             # 用中文注释搜索类型
-  python scripts/search.py example TabBar            # 搜索示例关键词
-  python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个)
-  python scripts/search.py list widgets              # 列出所有控件
-  python scripts/search.py list events button        # 列出 button 的所有事件 (不含 Event 开头函数)
-  python scripts/search.py list funcs button         # 列出 button 的所有方法 (不含 Event 开头函数)
+    python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
+    python scripts/search.py func 窗口/居中             # 用中文搜索函数注释 (多个关键词用 / 分割)
+    python scripts/search.py const button/check        # 搜索常量关键词 (多个关键词用 / 分割)
+    python scripts/search.py const 窗口/最小化          # 用中文搜索常量注释 (多个关键词用 / 分割)
+    python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
+    python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
+    python scripts/search.py type WebViewOptions       # 搜索type名关键词 (多个关键词用 / 分割)
+    python scripts/search.py type webview/选项         # 用中文搜索type注释
+    python scripts/search.py example event/TabBar      # 搜索示例内容关键词 (多个关键词用 / 分割)
+    python scripts/search.py example 按钮/选中/事件     # 搜索示例内容关键词 (多个关键词用 / 分割)
+    python scripts/search.py list widgets              # 列出 widget 包所有公开对象
+    python scripts/search.py list windows              # 列出 window 包所有公开对象
+    python scripts/search.py list packages             # 列出所有源码包
+    python scripts/search.py list examples             # 列出所有示例
+    python scripts/search.py list events button        # 列出 Button 的所有事件函数名
+    python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
+    python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
+    python scripts/search.py list pkg_funcs svg        # 列出 svg 包所有公开非对象函数 (包级函数)
+    python scripts/search.py example_name 美化/编辑框   # 搜索示例包注释
+    python scripts/search.py example_name draw/button  # 搜索示例名
         """,
     )
     parser.add_argument(

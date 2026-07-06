@@ -103,6 +103,7 @@ source/
 | 了解项目结构 | `python scripts/search.py list packages` | 列出所有包和文件数 (含描述) |
 | 查看所有示例 | `python scripts/search.py list examples` | 列出所有示例 (含描述) |
 | 不知道包里有什么对象 | `python scripts/search.py list objects <包名>` | 列出包内所有公开对象 (含描述) |
+| 不知道包里有什么非对象函数, 比如构造函数 | `python scripts/search.py list pkg_funcs <包名>` | 列出包内所有公开的包级函数（非方法，无接收者） |
 
 > **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge 包除外），末尾加 `all` 参数可全部列出。
 
