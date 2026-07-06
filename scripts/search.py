@@ -1656,7 +1656,9 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  列出: {subcommand}", C_CYAN, bold=True)
     if extra_arg:
-        color_print(f"  对象: {extra_arg}", C_CYAN)
+        # pkg_funcs 的参数为包名, 其余 (events/funcs/objects) 为对象名
+        arg_label = "包名" if subcommand == "pkg_funcs" else "对象"
+        color_print(f"  {arg_label}: {extra_arg}", C_CYAN)
     if include_event_prefix:
         color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
     color_print(f"{'='*60}\n", C_CYAN)
