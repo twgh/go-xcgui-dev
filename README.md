@@ -1,4 +1,4 @@
-# go-xcgui-dev 1.0.6
+# go-xcgui-dev 1.0.7
 
 Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发，直接避免 AI 产生幻觉。
 
@@ -10,7 +10,8 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 
 - 使用命令行工具 `xc` 下载
     ```bash
-    go install -ldflags="-s -w" -trimpath github.com/twgh/xc@latest
+    go install github.com/twgh/xc@latest
+    # 下载到当前目录
     xc getskill
     ```
 ## 技能触发场景
