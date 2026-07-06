@@ -1503,21 +1503,51 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
 
     elif subcommand == "examples":
         if EXAMPLE_SRC.exists():
-            for cat_dir in sorted(EXAMPLE_SRC.iterdir()):
-                if not cat_dir.is_dir() or cat_dir.name.startswith("."):
-                    continue
-                color_print(f"\n  [{cat_dir.name}]", C_CYAN, bold=True)
-                for ex_dir in sorted(cat_dir.iterdir()):
-                    if ex_dir.is_dir() and not ex_dir.name.startswith("."):
-                        # 跳过 deprecated.go、doc.go 和 _test.go 文件
-                        go_files = [f for f in ex_dir.glob("*.go")
-                                    if f.name not in {"deprecated.go", "doc.go"}
-                                    and not f.name.endswith("_test.go")]
-                        desc = ""
-                        if go_files:
-                            # 使用辅助函数获取合并后的包注释
-                            desc = _get_package_comment(go_files[0])
-                        color_print(f"    {ex_dir.name:35} {C_GRAY}{desc}{C_RESET}")
+            # 递归收集所有包含 main 包的目录, 每个 main 包目录即为一个独立示例
+            example_dirs: list[tuple[str, str]] = []  # [(分类相对路径, 示例名)]
+
+            def _is_main_example(d: Path) -> bool:
+                """目录是否包含 main 包 (以 package main 声明)."""
+                for f in d.glob("*.go"):
+                    if f.name in {"deprecated.go", "doc.go"} or f.name.endswith("_test.go"):
+                        continue
+                    try:
+                        text = f.read_text(encoding="utf-8", errors="replace")
+                    except Exception:
+                        continue
+                    if re.search(r"^package\s+main\b", text, re.MULTILINE):
+                        return True
+                return False
+
+            def _walk(d: Path) -> None:
+                for sub in sorted(d.iterdir()):
+                    if not sub.is_dir() or sub.name.startswith("."):
+                        continue
+                    if _is_main_example(sub):
+                        header = sub.parent.relative_to(EXAMPLE_SRC).as_posix()
+                        example_dirs.append((header, sub.name))
+                    else:
+                        # 中间分组目录, 继续向下寻找示例
+                        _walk(sub)
+
+            _walk(EXAMPLE_SRC)
+
+            # 按分类相对路径分组输出
+            grouped: dict[str, list[str]] = {}
+            for header, name in example_dirs:
+                grouped.setdefault(header, []).append(name)
+
+            for header in sorted(grouped):
+                color_print(f"\n  [{header}]", C_CYAN, bold=True)
+                for name in sorted(grouped[header]):
+                    ex_dir = EXAMPLE_SRC / header / name
+                    go_files = [f for f in ex_dir.glob("*.go")
+                                if f.name not in {"deprecated.go", "doc.go"}
+                                and not f.name.endswith("_test.go")]
+                    desc = ""
+                    if go_files:
+                        desc = _get_package_comment(go_files[0])
+                    color_print(f"    {name:35} {C_GRAY}{desc}{C_RESET}")
 
     elif subcommand == "packages":
         # 递归查找所有包含 .go 文件的目录（排除测试文件和废弃文件）
