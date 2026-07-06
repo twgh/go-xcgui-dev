@@ -848,54 +848,72 @@ def search_example_name(keyword: str) -> None:
 
     found = 0
 
-    # 遍历示例目录: EXAMPLE_SRC / 分类目录 / 示例目录
-    for cat_dir in sorted(EXAMPLE_SRC.iterdir()):
-        if not cat_dir.is_dir():
-            continue
+    # 递归收集所有包含 main 包的示例目录 (与 list examples 保持一致, 支持任意深度)
+    example_dirs: list[Path] = []
 
-        for ex_dir in sorted(cat_dir.iterdir()):
-            if not ex_dir.is_dir():
+    def _is_main_example(d: Path) -> bool:
+        """目录是否包含 main 包 (以 package main 声明)."""
+        for f in d.glob("*.go"):
+            if f.name in {"deprecated.go", "doc.go"} or f.name.endswith("_test.go"):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            if re.search(r"^package\s+main\b", text, re.MULTILINE):
+                return True
+        return False
+
+    def _walk(d: Path) -> None:
+        for sub in sorted(d.iterdir()):
+            if not sub.is_dir() or sub.name.startswith("."):
+                continue
+            if _is_main_example(sub):
+                example_dirs.append(sub)
+            else:
+                # 中间分组目录, 继续向下寻找示例
+                _walk(sub)
+
+    _walk(EXAMPLE_SRC)
+
+    for ex_dir in example_dirs:
+        # 示例名 (目录名)
+        example_name = ex_dir.name
+
+        # 获取示例的包注释
+        go_files = [f for f in ex_dir.glob("*.go")
+                    if f.name not in {"deprecated.go", "doc.go"}
+                    and not f.name.endswith("_test.go")]
+        package_comment = _get_package_comment(go_files[0]) if go_files else ""
+
+        # 根据搜索类型进行匹配
+        if is_chinese:
+            # 中文搜索: 在包注释中搜索
+            if not package_comment:
+                continue
+            # 检查所有关键词是否都在包注释中 (不区分大小写)
+            if not all(kw.lower() in package_comment.lower() for kw in keywords):
+                continue
+        else:
+            # 英文搜索: 在示例名 (目录名) 中搜索
+            if not all(kw.lower() in example_name.lower() for kw in keywords):
                 continue
 
-            # 示例名 (目录名)
-            example_name = ex_dir.name
+        # 找到匹配
+        found += 1
+        relative = ex_dir.relative_to(PROJECT_ROOT)
 
-            # 获取示例的包注释
-            package_comment = ""
-            go_files = [f for f in ex_dir.glob("*.go")
-                        if f.name not in {"deprecated.go", "doc.go"}
-                        and not f.name.endswith("_test.go")]
-            if go_files:
-                package_comment = _get_package_comment(go_files[0])
-
-            # 根据搜索类型进行匹配
-            if is_chinese:
-                # 中文搜索: 在包注释中搜索
-                if not package_comment:
-                    continue
-                # 检查所有关键词是否都在包注释中 (不区分大小写)
-                if not all(kw.lower() in package_comment.lower() for kw in keywords):
-                    continue
-            else:
-                # 英文搜索: 在示例名 (目录名) 中搜索
-                if not all(kw.lower() in example_name.lower() for kw in keywords):
-                    continue
-
-            # 找到匹配
-            found += 1
-            relative = ex_dir.relative_to(PROJECT_ROOT)
-
-            # 显示结果
-            if is_chinese:
-                color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
-                print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+        # 显示结果
+        if is_chinese:
+            color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
+            print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+            print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
+        else:
+            color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
+            print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
+            if package_comment:
                 print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
-            else:
-                color_print(f"  {C_BOLD}{C_MAGENTA}{relative}{C_RESET}")
-                print(f"    {C_GRAY}示例名: {example_name}{C_RESET}")
-                if package_comment:
-                    print(f"    {C_GRAY}包注释: {package_comment}{C_RESET}")
-            print()
+        print()
 
     if found:
         color_print(f"  共找到 {found} 个匹配", C_YELLOW)
