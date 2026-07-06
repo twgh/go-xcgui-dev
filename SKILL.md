@@ -105,7 +105,7 @@ source/
 | 不知道包里有什么对象 | `python scripts/search.py list objects <包名>` | 列出包内所有公开对象 (含描述) |
 | 不知道包里有什么非对象函数, 比如构造函数 | `python scripts/search.py list pkg_funcs <包名>` | 列出包内所有公开的包级函数（非方法，无接收者） |
 
-> **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge包除外, 因为edge包事件都是以Event开头的），末尾加 `all` 参数可全部列出。
+> **关键词规则**：用 `/` 分割多个关键词，不区分大小写, 多个关键词时只会列出同时满足多个关键词的结果, 而不是`或`的意思；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge包除外, 因为edge包事件都是以Event开头的），末尾加 `all` 参数可全部列出。
 
 ### Step 2：阅读确认
 
