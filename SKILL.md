@@ -105,7 +105,7 @@ source/
 | 不知道包里有什么对象 | `python scripts/search.py list objects <包名>` | 列出包内所有公开对象 (含描述) |
 | 不知道包里有什么非对象函数, 比如构造函数 | `python scripts/search.py list pkg_funcs <包名>` | 列出包内所有公开的包级函数（非方法，无接收者） |
 
-> **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge 包除外），末尾加 `all` 参数可全部列出。
+> **关键词规则**：用 `/` 分割多个关键词，不区分大小写；含中文时触发注释搜索。`list funcs` / `list events` 默认不含 `Event` 前缀函数（edge包除外, 因为edge包事件都是以Event开头的），末尾加 `all` 参数可全部列出。
 
 ### Step 2：阅读确认
 
@@ -157,17 +157,21 @@ source/
 | 程序提示"请安装 WebView2 运行时" | 代码中调用 `edge.DownloadWebView2()` 下载小型安装引导程序 | 告知用户手动前往 Microsoft 官网下载安装 |
 | 本机版本低于库要求版本 | 打印警告但仍尝试运行（低版本通常向后兼容） | 告知用户升级 WebView2 运行时以获取最佳兼容性 |
 
+## 最佳实践
+
+- 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上; 你也可用窗口对象的 `SetBorderSize` 设置边框大小, 因为默认的边框很宽, 不美观
+- 优先使用`AddEvent`开头的事件, `edge`包的事件除外, 因为它里面只有`Event`开头的事件
+- 在动态添加布局元素后可调用窗口对象的 `AdjustLayout().Redraw(false)` 以刷新布局, 防止布局错乱
+- 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
+
 ## 常见问题
 
 > 核心反例（崩溃/泄漏/刷新等）请参见上方 [🚫 反例与禁止事项](#-反例与禁止事项)。
 
 - Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18
-- 在动态添加布局元素后可调用 `w.AdjustLayout().Redraw(false)` 以刷新布局
 - 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式
 - 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色
-- 默认窗口是有上下左右的边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上, 你也可用 `SetBorderSize` 设置边框大小
 - xcgui 窗口的 Handle 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api
-- 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
 - 如果文本中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`
 
 ## 最简单标准代码
