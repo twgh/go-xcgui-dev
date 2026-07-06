@@ -93,6 +93,7 @@ source/
 | 查函数定义和注释 | `python scripts/search.py func <关键词>` | 会显示完整函数定义和注释 |
 | 查常量定义和注释 | `python scripts/search.py const <关键词>` | 会显示完整常量定义和注释 |
 | 查事件定义和注释 | `python scripts/search.py event <关键词>` | 会显示完整函数定义和注释 |
+| 查类型/结构体定义和字段 | `python scripts/search.py type <关键词>` | 会显示类型注释、定义及字段块 (struct/interface) |
 | 找示例参考 | `python scripts/search.py example <关键词>` | 搜 xcgui-example/ 全部示例 |
 | 根据示例名或包注释精准找示例 | `python scripts/search.py example_name <keyword>` | 会更精准 |
 | 不知道有什么元素对象 | `python scripts/search.py list widgets` | 列出所有可用元素对象和描述 |

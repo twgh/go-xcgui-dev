@@ -6,6 +6,7 @@
     python scripts/search.py func <keyword>         # 搜索函数定义
     python scripts/search.py const <keyword>        # 搜索常量定义
     python scripts/search.py event <keyword>        # 搜索事件相关
+    python scripts/search.py type <keyword>         # 搜索类型定义 (struct/interface/等)
     python scripts/search.py example <keyword>      # 搜索示例代码
     python scripts/search.py example_name <keyword> # 搜索示例名或包注释
     python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects
@@ -20,6 +21,8 @@
     python scripts/search.py const 窗口/最小化          # 用中文搜索常量注释 (多个关键词用 / 分割)
     python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个关键词用 / 分割)
     python scripts/search.py event 窗口/鼠标光标        # 搜索事件函数中文注释关键词 (多个关键词用 / 分割)
+    python scripts/search.py type WebViewOptions       # 搜索type名关键词 (多个关键词用 / 分割)
+    python scripts/search.py type webview/选项         # 用中文搜索type注释
     python scripts/search.py example event/TabBar      # 搜索示例内容关键词 (多个关键词用 / 分割)
     python scripts/search.py example 按钮/选中/事件     # 搜索示例内容关键词 (多个关键词用 / 分割)
     python scripts/search.py list widgets              # 列出 widget 包所有公开对象
@@ -442,6 +445,111 @@ def search_func(keyword: str) -> None:
         color_print(f"  共找到 {found} 个匹配", C_YELLOW)
     else:
         color_print(f"  未找到匹配 \"{keyword}\" 的函数定义", C_RED)
+
+
+def search_type(keyword: str) -> None:
+    """搜索类型定义 (struct/interface/等).
+
+    搜索范围:
+        - source/xcgui/ 下的所有子目录, 不含.开头的
+
+    关键词规则:
+        - 用 / 分割多个关键词，类型必须同时匹配所有关键词
+        - 中文关键词：搜索类型名上方的注释
+        - 英文关键词：搜索类型名 (type Xxx ...)
+    """
+    # 判断是否为中文搜索
+    is_chinese = bool(re.search(r'[\u4e00-\u9fff]', keyword))
+
+    # 分割关键词
+    keywords = [k.strip() for k in keyword.split('/') if k.strip()]
+
+    # 动态获取所有子目录
+    search_dirs = [
+        d.name for d in XCGUI_SRC.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    ]
+
+    color_print(f"\n{'='*60}", C_CYAN)
+    color_print(f"  搜索类型: \"{keyword}\"", C_CYAN, bold=True)
+    if len(keywords) > 1:
+        color_print(f"  (关键词: {', '.join(keywords)})", C_GRAY)
+    color_print(f"{'='*60}\n", C_CYAN)
+
+    found = 0
+    for go_file in find_go_files(XCGUI_SRC, search_dirs):
+        try:
+            text = go_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            # 匹配类型定义行: type Xxx struct { / type Xxx interface { / type Xxx = ...
+            m = re.match(r'^\s*type\s+(\w+)\s+', line)
+            if not m:
+                continue
+            type_name = m.group(1)
+
+            # 跳过未导出的类型（小写字母开头）
+            if not type_name[0].isupper():
+                continue
+
+            if is_chinese:
+                # 中文搜索：在类型名上方的注释中搜索
+                comment = _get_func_comment(lines, i)
+                if not all(kw in comment for kw in keywords):
+                    continue
+            else:
+                # 英文搜索：在类型定义行中搜索（含类型名），不区分大小写
+                line_lower = line.lower()
+                if not all(kw.lower() in line_lower for kw in keywords):
+                    continue
+
+            relative = go_file.relative_to(PROJECT_ROOT)
+            found += 1
+            color_print(f"  {C_MAGENTA}{relative}{C_RESET}:{C_GREEN}{i+1}{C_RESET}")
+
+            # 1. 向上查找注释块起始位置
+            comment_start = i
+            if i > 0:
+                j = i - 1
+                while j >= 0:
+                    stripped_line = lines[j].strip()
+                    if stripped_line.startswith("//"):
+                        comment_start = j
+                        j -= 1
+                    elif stripped_line == "":
+                        if comment_start == i:
+                            j -= 1
+                            continue
+                        else:
+                            break
+                    else:
+                        break
+
+            # 2. 显示注释块
+            for j in range(comment_start, i):
+                print(f"    {C_GRAY}{lines[j].rstrip()}{C_RESET}")
+
+            # 3. 显示类型定义行
+            print(f"    {C_BOLD}{lines[i].rstrip()}{C_RESET}")
+
+            # 4. 显示字段块 (struct/interface 用 {} 包裹)
+            if '{' in lines[i]:
+                depth = lines[i].count('{') - lines[i].count('}')
+                k = i + 1
+                while k < len(lines) and depth > 0:
+                    ln = lines[k]
+                    print(f"    {ln.rstrip()}")
+                    depth += ln.count('{') - ln.count('}')
+                    k += 1
+            print()
+
+    if found:
+        color_print(f"  共找到 {found} 个匹配", C_YELLOW)
+    else:
+        color_print(f"  未找到匹配 \"{keyword}\" 的类型定义", C_RED)
 
 
 def search_const(keyword: str) -> None:
@@ -1697,6 +1805,7 @@ def main():
   func <keyword>       搜索函数定义 (支持中英文, 多关键词用 / 分割)
   const <keyword>      搜索常量定义 (支持中英文, 多关键词用 / 分割)
   event <keyword>      搜索事件相关代码 (支持中英文, 多关键词用 / 分割)
+  type <keyword>       搜索类型定义 (struct/interface/等, 支持中英文, 多关键词用 / 分割)
   example <keyword>    搜索示例代码 (在 xcgui-example 中搜索, 支持中英文, 多关键词用 / 分割)
   example_name <keyword>  搜索示例名或包注释 (多关键词用 / 分割, 含中文搜包注释, 否则搜示例名)
 
@@ -1721,6 +1830,8 @@ def main():
   python scripts/search.py const 阴影窗口             # 用中文注释搜索常量
   python scripts/search.py event tree/select         # 搜索事件函数名关键词 (多个)
   python scripts/search.py event 窗口消息过程         # 搜索事件函数中文注释
+  python scripts/search.py type WebViewOptions       # 搜索类型定义 (struct/interface)
+  python scripts/search.py type 圆角矩形             # 用中文注释搜索类型
   python scripts/search.py example TabBar            # 搜索示例关键词
   python scripts/search.py example event/TabBar      # 搜索示例关键词 (多个)
   python scripts/search.py list widgets              # 列出所有控件
@@ -1730,7 +1841,7 @@ def main():
     )
     parser.add_argument(
         "command",
-        choices=["func", "const", "event", "example", "example_name", "list"],
+        choices=["func", "const", "event", "type", "example", "example_name", "list"],
         help="搜索命令",
     )
     parser.add_argument(
@@ -1796,6 +1907,8 @@ def main():
             search_example(keyword)
         elif args.command == "example_name":
             search_example_name(keyword)
+        elif args.command == "type":
+            search_type(keyword)
 
 
 if __name__ == "__main__":
