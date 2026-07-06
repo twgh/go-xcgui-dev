@@ -8,7 +8,7 @@ description: |
 agent_created: false
 ---
 
-# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.7
+# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.0.8
 
 ## 核心准则
 
