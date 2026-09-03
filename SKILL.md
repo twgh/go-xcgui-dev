@@ -1,7 +1,7 @@
 ---
 name: go-xcgui-dev
 description: |
-  Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。当 xcgui 库有更新时，你可以发出"更新 xcgui 源码"或"重新下载源码"指令, 让 AI 更新技能目录中用于参考的源码。
+  Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。xcgui 库更新时，可发出"更新 xcgui 源码"或"重新下载源码"指令以重新执行 `python scripts/download.py` 下载最新源码。
   提问示例：请使用 xcgui 的 WebView 写一个现代桌面应用。
   触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/类型/结构体/示例用法、排查 xcgui 编译问题。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
@@ -16,12 +16,12 @@ agent_created: false
 
 1. **零预训练回答**：关于 xcgui 的 API 签名、参数说明、常量值、函数用法等信息，**严禁**依赖模型预训练知识回答。每一次回答都必须基于对本地 `source/` 目录下源文件的**实时检索**。
 2. **源码即真理**：`source/xcgui/` 下的 `.go` 文件是唯一的 API 真相来源，`source/xcgui-example/` 是唯一的用法示例来源。
-3. **必须优先使用 `scripts/search.py` 进行源码检索**。如果 `scripts/search.py` 搜索不到内容，你可以尝试更换搜索关键词, 或者更换检索工具自行搜索。
+3. **必须优先使用 `scripts/search.py` 进行源码检索**。若 `scripts/search.py` 搜索不到内容，更换搜索关键词，或改用其它检索工具搜索。
 4. **先查后答**：收到任何 xcgui 相关问题时，第一步永远是检索源码，第二步才组织回答。
 5. **双重 API 层**：xcgui 有两层 API —— `widget,window` 包提供面向对象的 Go 风格封装，`xc` 包提供底层 C 函数绑定。两层都可使用，示例中常同时展示两种写法。回答时应根据用户场景推荐合适层级。
 6. **xcgui 是纯 Go 封装的**, 不依赖 cgo, 无需 C 编译器。
-7. **禁止修改 `source/` 目录下的文件内容**, 这些内容是受保护的只读资源, 你生成的文件禁止创建到 `source/` 目录下。
-8. **禁止将你生成的文件创建到本技能目录下**。
+7. **禁止修改 `source/` 目录下的文件内容**, 这些内容是受保护的只读资源, 生成的文件禁止创建到 `source/` 目录下。
+8. **禁止在本技能目录下创建文件**。
 
 ## 🚫 反例与禁止事项
 
@@ -38,7 +38,7 @@ agent_created: false
 | 7 | **凭模型记忆回答 API 细节，跳过源码检索** | 回答错误 | 必须用 `search.py` 检索 + `read` 确认后再回答 |
 | 8 | **将生成的文件放到 `source/` 或本技能目录下** | 污染源码 | 创建到用户的工作目录中 |
 
-## 源码初始化与更新(这是给AI看的)
+## 源码初始化与更新
 
 本技能不包含 `source/` 目录，首次使用或需要更新源码时，请执行以下操作。
 
@@ -72,7 +72,7 @@ source/
 
 ### 更新源码
 
-当 xcgui 库有更新时，你可以发出**"更新 xcgui 源码"**或**"重新下载源码"**指令，我会重新执行 `python scripts/download.py` 下载最新源码。
+当 xcgui 库有更新时，发出**"更新 xcgui 源码"**或**"重新下载源码"**指令即可重新执行 `python scripts/download.py` 下载最新源码。
 
 ---
 
@@ -158,7 +158,7 @@ source/
 
 ## 最佳实践
 
-- 默认窗口是有四边框的, 在你用绝对坐标创建元素/绘制等操作前得先用 `GetBorderSize` 获取到边框大小, 上边就是标题栏的高度, 得知边框大小后可避免将元素创建到边框或标题上; 你也可用窗口对象的 `SetBorderSize` 设置边框大小, 因为默认的边框很宽, 不美观
+- 默认窗口是有四边框的, 用绝对坐标创建元素/绘制等操作前先使用 `GetBorderSize` 获取边框大小, 上边即为标题栏高度, 得知边框大小后可避免将元素创建到边框或标题上; 也可用窗口对象的 `SetBorderSize` 设置边框大小, 因为默认边框很宽, 不美观
 - 优先使用`AddEvent`开头的事件, `edge`包的事件除外, 因为它里面只有`Event`开头的事件
 - 在动态添加布局元素后可调用窗口对象的 `AdjustLayout().Redraw(false)` 以刷新布局, 防止布局错乱
 - 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法
@@ -262,4 +262,4 @@ source/
 
 ## xcgui 源码的编码规范速查
 
-这个指的是 xcgui 源码自身的编码规范, 不代表你写代码要遵循这个规范, 可读取 `references/XCGUI Programming Standards.md` 文件
+此文件指 xcgui 源码自身的编码规范, 不代表编写代码需遵循该规范, 可读取 `references/XCGUI Programming Standards.md` 文件
