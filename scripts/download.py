@@ -4,7 +4,7 @@
 
 自动使用代理加速下载:
   - ghfast: https://ghfast.top/
-  - llkk: https://gh.llkk.cc/
+  - ghproxy: https://gh-proxy.org/
   - direct: 直连
 """
 
@@ -33,7 +33,7 @@ if _reconfigure is not None:
 # 代理列表
 PROXIES = [
     ("ghfast", "https://ghfast.top/"),
-    ("llkk", "https://gh.llkk.cc/"),
+    ("ghproxy", "https://gh-proxy.org/"),
     ("direct", ""),
 ]
 
