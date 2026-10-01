@@ -1,10 +1,16 @@
 ---
 name: go-xcgui-dev
 description: |
-  Go xcgui（炫彩界面库）开发助手。用于 Windows 桌面应用开发，覆盖所有 widget/窗口/动画/SVG/WebView2/字体/图片 等 API 封装。xcgui 库更新时，可发出"更新 xcgui 源码"或"重新下载源码"指令以重新执行 `python scripts/download.py` 下载最新源码。
-  提问示例：请使用 xcgui 的 WebView 写一个现代桌面应用。
-  触发场景：使用 xcgui 写代码、查找 xcgui 函数/常量/事件/类型/结构体/示例用法、排查 xcgui 编译问题。
+  Go xcgui（炫彩界面库）开发助手，用于开发 Windows 桌面 GUI 应用，覆盖窗口、控件、布局、动画、SVG、WebView2、字体、图片、托盘、背景等全部 API 封装。
+  触发关键词：xcgui、炫彩、炫彩界面库、go-xcgui、github.com/twgh/xcgui、Go 桌面应用、Go GUI、Windows GUI。
+  触发场景：
+  - 使用 xcgui / 炫彩编写或修改 Go 桌面程序代码（窗口、控件、列表/表格/树、动画、SVG、WebView2 等）；
+  - 查询 xcgui 的函数 / 常量 / 事件 / 类型 / 结构体 / 枚举 / 接口 / 包，以及示例用法；
+  - 排查 xcgui 编译报错、运行崩溃、内存泄漏、界面不刷新、WebView2 运行时缺失等问题；
+  - 执行本技能维护指令，如"更新 xcgui 源码""重新下载源码"。
+  提问示例：用 xcgui 的 WebView 写一个现代桌面应用；xcgui 的 ani 动画怎么用；xcgui 程序崩溃怎么排查。
   **关键约束：禁止凭模型记忆回答 API 细节，必须检索本地源码。**
+  **不适用于** fyne、walk、gioui、Wails 等非 xcgui 的 Go GUI 库。
 agent_created: false
 ---
 
