@@ -230,7 +230,10 @@ go build -ldflags="-s -w -H windowsgui" -trimpath
 
 List, ListView, ListBox, Tree 元素中有项模板, 每一项都是从项模板创建的, 默认项模板可查看 `references/itemTemplate/` 下的 xml 文件以了解项中有什么元素, 以便于在项模板创建完成事件中修改项模板中的元素样式等。
 
-相关原理图解: `references/itemTemplate/列表项模板复用机制.png`(启用项模板复用可调用 `EnableTemplateReuse(true)`), `references/itemTemplate/列表-项模板-数据适配器-关系图.png`。
+相关原理说明:
+
+- **项模板复用**: 列表滚动时, 滚出视口的项会被回收进一个"不可见实例缓存"; 滚入的新项则复用该缓存中的模板实例, 避免重复创建, 以提升滚动性能。启用方式为调用 `EnableTemplateReuse(true)`。
+- **列表 / 项模板 / 数据适配器关系**: 数据适配器由两部分组成 —— "表头-键值表"(字段名对应各列, 如 name1→列1、name2→列2) 与 "列表项-数据表"(逐行数据)。项模板(如 `item.xml`)内通过 `BindData` 按字段名 name1、name2 绑定; 表头模板与项模板分别对应表头与列表项。界面运行时从数据适配器"取数据"渲染。其它列表类型(ListView/ListBox/Tree)原理相同。
 
 ## XCGUI源码目录地图
 
