@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--炫彩界面库-列表元素项模板文件-->
+<head />
+<xc_template_list>
+	<listHeader_item widthT="300" heightT="30">
+		<layoutEleUI enableCanvas="false" drawBorder="false" mouseThrough="true" layout.horizon="true" layout.alignH="left" layout.alignV="center" layout.width="fill" layout.height="fill" layout.space="2" itemID="0">
+			<shapeText itemID="1" layout.width="fill" layout.height="fill" content="{binding field=name1}" />
+		</layoutEleUI>
+	</listHeader_item>
+	<list_Item widthT="300" heightT="30">
+		<layoutEleUI enableCanvas="false" drawBorder="false" mouseThrough="true" layout.horizon="true" layout.alignH="left" layout.alignV="center" layout.width="fill" layout.height="fill" layout.space="2" itemID="0">
+			<shapeText itemID="1" layout.width="fill" layout.height="fill" content="{binding field=name1}" />
+		</layoutEleUI>
+	</list_Item>
+</xc_template_list>

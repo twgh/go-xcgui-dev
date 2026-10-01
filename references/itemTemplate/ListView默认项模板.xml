@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--炫彩界面库-列表视元素项模板文件-->
+<head />
+<xc_template_listView>
+	<listView_Group>
+		<layoutEleUI enableCanvas="false" drawBorder="false" mouseThrough="true" widthT="300" heightT="30" layout.horizon="true" layout.alignH="left" layout.alignV="center" layout.width="fill" layout.height="fill" layout.space="2" itemID="0">
+			<!--要想获取这个button, 请先获取父级布局元素, 再获取其子元素-->
+			<buttonUI expandButton="true" rect="0,0,80,20" buttonType="check" content="展开-收缩" />
+			<shapeText itemID="1" layout.width="auto" layout.height="fill" content="{binding field=name1}" />
+		</layoutEleUI>
+	</listView_Group>
+	<listView_item>
+		<layoutEleUI enableCanvas="false" drawBorder="false" mouseThrough="true" widthT="100" heightT="100" layout.horizon="false" layout.alignH="center" layout.alignV="top" layout.width="fill" layout.height="fill" layout.space="2" itemID="0">
+			<shapePicture itemID="1" rect="0,0,70,65" image="{binding field=name2}" />
+			<shapeText itemID="2" layout.width="auto" layout.height="20" content="{binding field=name3}" />
+		</layoutEleUI>
+	</listView_item>
+</xc_template_listView>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--炫彩界面库-树元素项模板文件-->
+<head />
+<xc_template_tree>
+	<!--这层layout在真实项中是不存在的,无视就好-->
+	<layoutEleUI widthT="300" heightT="30" layout.horizon="true" layout.alignH="left" layout.alignV="center" layout.width="auto" layout.height="fill" layout.space="3">
+		<!--这层layout的父元素直接就是Tree-->
+		<layoutEleUI layout.alignV="center" layout.width="15" layout.height="fill" itemID="0">
+			<buttonUI itemID="1" transparent="true" rect="0,0,13,13" expandButton="true" buttonType="check" />
+		</layoutEleUI>
+		<shapeText itemID="2" layout.width="auto" layout.height="fill" content="{binding field=name1}" />
+	</layoutEleUI>
+</xc_template_tree>
