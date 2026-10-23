@@ -170,6 +170,7 @@ source/
 > 核心反例（崩溃/泄漏/刷新等）请参见上方 [🚫 反例与禁止事项](#-反例与禁止事项)。
 
 - Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18。
+- xcgui 字体的 size 单位是 pt(磅), 不是像素，渲染尺寸 = size×DPI/72 物理像素。
 - `Menu` 和 Shape* 等形状组件不继承 `Element`, 不要误认为继承。
 - Shape* 等形状组件没有事件, 需要交互反馈可以用 Button / Element 等元素替代。
 - List 表头数据适配器类型是 AdMap，不是 AdTable。
@@ -177,11 +178,13 @@ source/
 - `Edit.AddText` 是「在当前插入点插入」，不是追加到末尾, 使用 `MoveEnd` 可把插入点移到末尾。
 - 背景管理器的 `AddBkFill`/`AddBkBorder` 等添加背景的 API 是追加式, 没有「替换某个状态的背景」的 API，同名状态可多次追加, 因此**需要改底色时不能重复 Add**，必须先清空再添加，否则累积到 20 个会报错并终止程序。
 - 背景管理器的 `AddBkFill` 等添加背景的 API 中的 id 参数指定后, 可使用 `_bkobj := bkm.GetObjectObj(id)` 获取到背景对象, 然后就可以操作该背景对象进行更多的美化。
+- 横向布局里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight。
 - 布局项（位置/显隐）的变更不会自动生效：`LayoutItem_SetPosition`、`LayoutItem_SetWidth`、`Show` 等调用只是把变更写入布局属性，还需调用父容器的 `AdjustLayout()` 重排（通常紧跟 `Redraw()` 重绘），变更才会反映到界面上。
+- 排查布局问题可以使用 `app.ShowLayoutFrame(true)` 显示布局边界, 更进一步可以给元素添加增强背景色。
 - 模态窗口 `DoModal` 返回后窗口及全部子元素已销毁, 再访问子元素句柄会报无效, 先取值再 `EndModal`。
 - 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式。
 - 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色。
-- xcgui 窗口的 Handle(`int`类型) 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api。**注意**: 像 `XWnd_GetFocusEle(hWindow int)` 类似函数的参数要传 `int` 类型的 Handle, 不要传 `int(w.GetHWND())`; 像 `XC_hWindowFromHWnd(hWnd uintptr)` 这样的要传 `uintptr` 类型的窗口真实句柄。
+- xcgui 窗口的 Handle(`int`类型) 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api。**注意**: 像 `XWnd_GetFocusEle(hWindow int)` 这样 `int` 类型的窗口句柄要传 `int` 类型的 Handle, 不要传 `int(w.GetHWND())`; 像 `XC_hWindowFromHWnd(hWnd uintptr)` 这样 `uintptr` 类型的窗口句柄要传 `uintptr` 类型的窗口真实句柄。给 `int` 类型的窗口句柄变量命名时建议用 `hWindow` 而不是 `hWnd` 防止混淆。
 - 如果文本中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`。
 
 ## 最简单标准代码
