@@ -152,40 +152,35 @@ source/
 | 程序提示"请安装 WebView2 运行时" | 代码中调用 `edge.DownloadWebView2()` 下载小型安装引导程序 | 告知用户手动前往 Microsoft 官网下载安装 |
 | 本机版本低于库要求版本 | 打印警告但仍尝试运行（低版本通常向后兼容） | 告知用户升级 WebView2 运行时以获取最佳兼容性 |
 
-## 事件
+## 使用 XUI 组件库进行快速开发
 
-- xcgui的一个事件类型可以注册多个回调处理函数，执行顺序为先执行最后注册的回调函数，最后执行第一个注册的回调函数，当你想拦截当前事件或不想向后传递，只需要在回调函数中设置参数 `*pbHandled=true` 即可。
-- 由于使用的是 `syscall.NewCallback` 创建的事件回调函数，该方法限制只能创建 2000 个左右的回调函数，超过就会 panic。当使用 `Event` 类型的函数来注册事件且回调函数是匿名函数时，每次都会创建 1 个新的回调函数，如果不加以控制，就可能会超过 2000 个。而 `AddEvent` 类型的函数会复用创建好的回调函数，可以任意使用匿名函数作为事件回调函数，无需担心超过 2000 个的限制。
-- 以`AddEvent`开头的事件的最后一个参数 `allowAddingMultiple` 允许添加多个回调函数, 不填默认为 true, 如果为 fasle 则是覆盖。
-- 优先使用`AddEvent`开头的事件, `edge`包的事件除外, 因为它里面只有`Event`开头的事件, `edge`包以`Event`开头的事件和`AddEvent`类型的事件实现原理是一致的, 可以看作是`AddEvent`类型的, 只是函数名不以Add开头, 它的最后一个参数也是 `allowAddingMultiple` 。
+[XUI — shadcn 风格的 xcgui 自绘组件](https://github.com/twgh/xui) 提供了大量封装好的组件, 方便快速开发美观的 Windows 桌面应用
 
-## 最佳实践
+### 一条命令初始化项目
 
-- 因为窗口默认是有四边框的, 而且直接在窗口上的元素, 其坐标是相对于整个窗口的, 坐标(0,0)是标题栏左上角, 所以用绝对坐标创建元素/绘制等操作前先使用 `GetBorderSize` 获取边框大小, Top即为标题栏高度, 得知边框大小后可避免将元素创建到边框或标题上; 可用窗口对象的 `SetBorderSize` 设置边框大小, 因为默认边框很宽, 不美观。
-- 在动态添加布局元素后可调用其父元素的 `AdjustLayout().Redraw()` 以刷新布局, 防止布局错乱。
-- 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法。
+```
+go run github.com/twgh/xui/cmd/xui@latest init -n myapp
+```
 
-## 常见问题
+### XUI CLI
 
-> 核心反例（崩溃/泄漏/刷新等）请参见上方 [🚫 反例与禁止事项](#-反例与禁止事项)。
+```
+xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + ui/)
+xui init [ui目录]        # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
+xui add button card     # 追加拷贝指定组件(自动带上依赖)
+xui add --all           # 拷贝全部组件
+xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
+xui add card --view     # 打印组件源码(可加 =card.go 只看某个文件), 不写本地
+xui add card --diff     # 与本地文件做逐行 diff, 不写本地
+xui update              # 更新已装组件(省略组件名 = ui/ 里已装的全部)
+xui update button       # 只更新指定组件(含依赖)
+xui list                # 列出可用组件
+xui search -q table     # 按组件名搜索(等价于 list -q table)
+xui view button         # 打印组件源码
+xui info                # 显示 CLI / 项目环境信息
+```
 
-- Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18。
-- xcgui 字体的 size 单位是 pt(磅), 不是像素，渲染尺寸 = size×DPI/72 物理像素。
-- `Menu` 和 Shape* 等形状组件不继承 `Element`, 不要误认为继承。
-- Shape* 等形状组件没有事件, 需要交互反馈可以用 Button / Element 等元素替代。
-- List 表头数据适配器类型是 AdMap，不是 AdTable。
-- ComboBox 的下拉列表是 ListView, 可以在 `AddEvent_Combobox_Popup_List` 事件中获取到其句柄, 然后进行样式美化。
-- `Edit.AddText` 是「在当前插入点插入」，不是追加到末尾, 使用 `MoveEnd` 可把插入点移到末尾。
-- 背景管理器的 `AddBkFill`/`AddBkBorder` 等添加背景的 API 是追加式, 没有「替换某个状态的背景」的 API，同名状态可多次追加, 因此**需要改底色时不能重复 Add**，必须先清空再添加，否则累积到 20 个会报错并终止程序。
-- 背景管理器的 `AddBkFill` 等添加背景的 API 中的 id 参数指定后, 可使用 `_bkobj := bkm.GetObjectObj(id)` 获取到背景对象, 然后就可以操作该背景对象进行更多的美化。
-- 横向布局里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight。
-- 布局项（位置/显隐）的变更不会自动生效：`LayoutItem_SetPosition`、`LayoutItem_SetWidth`、`Show` 等调用只是把变更写入布局属性，还需调用父容器的 `AdjustLayout()` 重排（通常紧跟 `Redraw()` 重绘），变更才会反映到界面上。
-- 排查布局问题可以使用 `app.ShowLayoutFrame(true)` 显示布局边界, 更进一步可以给元素添加增强背景色。
-- 模态窗口 `DoModal` 返回后窗口及全部子元素已销毁, 再访问子元素句柄会报无效, 先取值再 `EndModal`。
-- 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式。
-- 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色。
-- xcgui 窗口的 Handle(`int`类型) 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api。**注意**: 像 `XWnd_GetFocusEle(hWindow int)` 这样 `int` 类型的窗口句柄要传 `int` 类型的 Handle, 不要传 `int(w.GetHWND())`; 像 `XC_hWindowFromHWnd(hWnd uintptr)` 这样 `uintptr` 类型的窗口句柄要传 `uintptr` 类型的窗口真实句柄。给 `int` 类型的窗口句柄变量命名时建议用 `hWindow` 而不是 `hWnd` 防止混淆。
-- 如果文本中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`。
+更多命令与参数请查看 cli 帮助信息, 可能有更新
 
 ## 最简单标准代码
 
@@ -229,6 +224,41 @@ func main() {
 go build -ldflags="-s -w -H windowsgui" -trimpath
 ```
 
+## 事件
+
+- xcgui的一个事件类型可以注册多个回调处理函数，执行顺序为先执行最后注册的回调函数，最后执行第一个注册的回调函数，当你想拦截当前事件或不想向后传递，只需要在回调函数中设置参数 `*pbHandled=true` 即可。
+- 由于使用的是 `syscall.NewCallback` 创建的事件回调函数，该方法限制只能创建 2000 个左右的回调函数，超过就会 panic。当使用 `Event` 类型的函数来注册事件且回调函数是匿名函数时，每次都会创建 1 个新的回调函数，如果不加以控制，就可能会超过 2000 个。而 `AddEvent` 类型的函数会复用创建好的回调函数，可以任意使用匿名函数作为事件回调函数，无需担心超过 2000 个的限制。
+- 以`AddEvent`开头的事件的最后一个参数 `allowAddingMultiple` 允许添加多个回调函数, 不填默认为 true, 如果为 fasle 则是覆盖。
+- 优先使用`AddEvent`开头的事件, `edge`包的事件除外, 因为它里面只有`Event`开头的事件, `edge`包以`Event`开头的事件和`AddEvent`类型的事件实现原理是一致的, 可以看作是`AddEvent`类型的, 只是函数名不以Add开头, 它的最后一个参数也是 `allowAddingMultiple` 。
+
+## 最佳实践
+
+- 因为窗口默认是有四边框的, 而且直接在窗口上的元素, 其坐标是相对于整个窗口的, 坐标(0,0)是标题栏左上角, 所以用绝对坐标创建元素/绘制等操作前先使用 `GetBorderSize` 获取边框大小, Top即为标题栏高度, 得知边框大小后可避免将元素创建到边框或标题上; 可用窗口对象的 `SetBorderSize` 设置边框大小, 因为默认边框很宽, 不美观。
+- 在动态添加布局元素后可调用其父元素的 `AdjustLayout().Redraw()` 以刷新布局, 防止布局错乱。
+- 使用 WebView 时, 如果想让 html 中的元素(比如标题栏)可用鼠标拖动来移动窗口位置, 应该在创建 WebView 的 `WebViewOptions` 中启用 `AppDrag`, 然后给该元素添加 CSS: `app-region: drag`, 建议仅用于标题栏, 因为启用后会把该元素区域变为窗口非客户区, 在上面鼠标右键会弹出标题栏上才有的系统菜单; 如果不想让某个元素被拖动来移动窗口(比如标题栏中的控制按钮), 可以给它添加 `app-region: no-drag`; 如果除了标题栏之外还想有其它的可拖动区域且不使其变为非客户区, 可查看 `xcgui-example/webview/RoundedShadowWindow` 例子, 该例子中还有完美无锯齿的圆角阴影设置方法。
+
+## 常见问题
+
+> 核心反例（崩溃/泄漏/刷新等）请参见上方 [🚫 反例与禁止事项](#-反例与禁止事项)。
+
+- Go 模块路径是 `github.com/twgh/xcgui`，最小 Go 版本 1.18。
+- xcgui 字体的 size 单位是 pt(磅), 不是像素，渲染尺寸 = size×DPI/72 物理像素。
+- `Menu` 和 Shape* 等形状组件不继承 `Element`, 不要误认为继承。
+- Shape* 等形状组件没有事件, 需要交互反馈可以用 Button / Element 等元素替代。
+- List 表头数据适配器类型是 AdMap，不是 AdTable。
+- ComboBox 的下拉列表是 ListView, 可以在 `AddEvent_Combobox_Popup_List` 事件中获取到其句柄, 然后进行样式美化。
+- `Edit.AddText` 是「在当前插入点插入」，不是追加到末尾, 使用 `MoveEnd` 可把插入点移到末尾。
+- 背景管理器的 `AddBkFill`/`AddBkBorder` 等添加背景的 API 是追加式, 没有「替换某个状态的背景」的 API，同名状态可多次追加, 因此**需要改底色时不能重复 Add**，必须先清空再添加，否则累积到 20 个会报错并终止程序。
+- 背景管理器的 `AddBkFill` 等添加背景的 API 中的 id 参数指定后, 可使用 `_bkobj := bkm.GetObjectObj(id)` 获取到背景对象, 然后就可以操作该背景对象进行更多的美化。
+- 横向布局里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight。
+- 布局项（位置/显隐）的变更不会自动生效：`LayoutItem_SetPosition`、`LayoutItem_SetWidth`、`Show` 等调用只是把变更写入布局属性，还需调用父容器的 `AdjustLayout()` 重排（通常紧跟 `Redraw()` 重绘），变更才会反映到界面上。
+- 排查布局问题可以使用 `app.ShowLayoutFrame(true)` 显示布局边界, 更进一步可以给元素添加增强背景色。
+- 模态窗口 `DoModal` 返回后窗口及全部子元素已销毁, 再访问子元素句柄会报无效, 先取值再 `EndModal`。
+- 当程序使用 `app.New()` 参数为 true 时, 此时为 Direct2D 渲染模式, 为 false 时为 GDI+ 渲染模式。
+- 生成颜色除了使用 `xc.RGBA(r, g, b, a byte) uint32` 外, 还可使用 `xc.HexRGB2RGBA(str string, a byte) uint32` 将常见的 Web/CSS 十六进制颜色转换到炫彩界面库使用的颜色。
+- xcgui 窗口的 Handle(`int`类型) 只是内部维护的序号, 真实句柄应该用 `GetHWND` 方法来获取，是 `uintptr` 类型的，可用于 windows api。**注意**: 像 `XWnd_GetFocusEle(hWindow int)` 这样 `int` 类型的窗口句柄要传 `int` 类型的 Handle, 不要传 `int(w.GetHWND())`; 像 `XC_hWindowFromHWnd(hWnd uintptr)` 这样 `uintptr` 类型的窗口句柄要传 `uintptr` 类型的窗口真实句柄。给 `int` 类型的窗口句柄变量命名时建议用 `hWindow` 而不是 `hWnd` 防止混淆。
+- 如果文本中出现炫彩, 它是炫彩界面库的简称, 也就是xcgui, 例如`炫彩窗口`, 它的意思是`xcgui window`。
+
 ## 项模板
 
 List, ListView, ListBox, Tree 元素中有项模板, 每一项都是从项模板创建的, 默认项模板可查看 `references/itemTemplate/` 下的 xml 文件以了解项中有什么元素, 以便于在项模板创建完成事件中修改项模板中的元素样式等。
@@ -263,6 +293,7 @@ source/
    ├── ani/                  # 动画高级封装
    ├── ease/                 # 缓动函数
    ├── svg/                  # SVG 处理
+   ├── svgp/                 # 解析 SVG 的 path 数据与 SVG 文档, 需要时再交给 d2d 画出来
    ├── drawx/                # 图形绘制
    ├── font/                 # 字体管理
    ├── imagex/               # 图片处理
@@ -277,6 +308,9 @@ source/
    ├── bkobj/                # 背景对象
    ├── objectbase/           # 对象基类
    ├── wapi/                 # Windows API 封装
+   │   ├── com/              # 提供 COM 互操作的基础件
+   │   ├── d2d/              # 封装 Direct2D
+   │   ├── gdi/              # 封装 gdi32
    │   ├── wnd/              # 基于wapi封装窗口操作
    │   └── wutil/            # 基于wapi封装工具函数
    ├── tmpl/                 # 列表项模板
