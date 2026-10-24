@@ -1,4 +1,4 @@
-# go-xcgui-dev 1.1
+# go-xcgui-dev 1.2.0
 
 Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发，直接避免 AI 产生幻觉。
 
@@ -33,7 +33,8 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 
 ## 相关链接
 
-- xcgui Go 绑定：https://github.com/twgh/xcgui
-- xcgui 示例代码：https://github.com/twgh/xcgui-example
-- `xc` 命令行工具: https://github.com/twgh/xc
+- xcgui Go 绑定：[https://github.com/twgh/xcgui](https://github.com/twgh/xcgui)
+- xcgui 示例代码：[https://github.com/twgh/xcgui-example](https://github.com/twgh/xcgui-example)
+- XUI - shadcn 风格自绘组件库: [https://github.com/twgh/xui](https://github.com/twgh/xui)
+- `xc` 命令行工具: [https://github.com/twgh/xc](https://github.com/twgh/xc)
 
