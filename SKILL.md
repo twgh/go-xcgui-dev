@@ -4,7 +4,7 @@ description: Go xcgui（炫彩界面库）开发助手，用于开发 Windows �
 agent_created: false
 ---
 
-# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.2.0
+# go-xcgui-dev —  Go xcgui （炫彩界面库）开发助手 1.3.0
 
 ## 核心准则
 
@@ -154,33 +154,21 @@ source/
 
 ## 使用 XUI 组件库进行快速开发
 
-[XUI — shadcn 风格的 xcgui 自绘组件](https://github.com/twgh/xui) 提供了大量封装好的组件, 方便快速开发美观的 Windows 桌面应用
+[XUI — shadcn 风格的 xcgui 自绘组件库](https://github.com/twgh/xui) 提供了大量封装好的组件, 方便快速开发美观的 Windows 桌面应用
 
-### 一条命令初始化项目
+### 安装 XUI CLI
 
-```
-go run github.com/twgh/xui/cmd/xui@latest init -n myapp
-```
-
-### XUI CLI
-
-```
-xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + ui/)
-xui init [ui目录]        # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
-xui add button card     # 追加拷贝指定组件(自动带上依赖)
-xui add --all           # 拷贝全部组件
-xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
-xui add card --view     # 打印组件源码(可加 =card.go 只看某个文件), 不写本地
-xui add card --diff     # 与本地文件做逐行 diff, 不写本地
-xui update              # 更新已装组件(省略组件名 = ui/ 里已装的全部)
-xui update button       # 只更新指定组件(含依赖)
-xui list                # 列出可用组件
-xui search -q table     # 按组件名搜索(等价于 list -q table)
-xui view button         # 打印组件源码
-xui info                # 显示 CLI / 项目环境信息
+```bash
+go install github.com/twgh/xui/cmd/xui@latest
 ```
 
-更多命令与参数请查看 cli 帮助信息, 可能有更新
+### 新建 XUI 项目
+
+```bash
+xui init -n myapp
+```
+
+更多命令与参数请执行 `xui --help` 查看 cli 帮助信息
 
 ## 最简单标准代码
 
