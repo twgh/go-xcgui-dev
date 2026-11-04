@@ -46,11 +46,11 @@ agent_created: false
 python scripts/download.py
 ```
 
-如果下载失败py脚本输出结果会给出下载链接的。
+脚本会按 CNB → Gitee → GitCode → GitHub 顺序自动回退：每个平台先试 ZIP 归档，失败后（本机装有 git 时）改用 `git clone --depth 1`；Gitee / GitCode 只提供 git clone 通道。全部失败时，脚本会输出可选的 ZIP 地址与 git clone 命令。
 
-### 下载失败？手动下载
+### 下载失败？手动获取
 
-如果自动下载失败，提醒用户手动下载以下两个仓库的 ZIP 并解压到 `source/` 目录(下载地址会在py脚本输出结果中提供的)：
+如果自动获取失败，提醒用户按脚本输出的地址手动下载 ZIP 或执行 git clone，并把内容放到 `source/` 目录：
 
 1. **xcgui 源码**：
    - 解压后重命名文件夹为 `xcgui`
