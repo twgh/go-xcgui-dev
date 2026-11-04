@@ -9,11 +9,20 @@
     python scripts/search.py type <keyword>         # 搜索类型定义 (struct/interface/等)
     python scripts/search.py example <keyword>      # 搜索示例代码
     python scripts/search.py example_name <keyword> # 搜索示例名或包注释
-    python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects
+    python scripts/search.py list <keyword>         # 列表, 可填: widgets/windows/packages/examples/events/funcs/objects/pkg_funcs/pkg_doc
     python scripts/search.py list events <对象名>   # 列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
     python scripts/search.py list funcs <对象名>    # 列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
     python scripts/search.py list objects <包名>    # 列出指定包的所有公开对象 (含描述)
     python scripts/search.py list pkg_funcs <包名>  # 列出指定包的所有公开非对象函数 (包级函数, 无接收者)
+    python scripts/search.py list pkg_doc <包名>    # 输出指定包 doc.go 的完整包文档 (保留 Markdown 结构)
+
+说明:
+    list funcs / list events 适用于 source/xcgui 下全部包的对象; 同名对象可用
+    "包名.对象名" 精确指定, 例如: python scripts/search.py list funcs app.App
+    const 覆盖 source/xcgui 下全部包 (xcc / wapi / edge / xc 等); 英文匹配常量定义行,
+    含中文时额外匹配常量分组/条目注释.
+    list packages 只显示每个包注释的首段摘要; 需要全文时用 list pkg_doc <包名>,
+    如: python scripts/search.py list pkg_doc wapi/d2d
 
 示例:
     python scripts/search.py func button/gettext       # 搜索函数名关键词 (多个关键词用 / 分割)
@@ -34,6 +43,9 @@
     python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
     python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
     python scripts/search.py list pkg_funcs svg        # 列出 svg 包所有公开非对象函数 (包级函数)
+    python scripts/search.py list funcs app.App        # 查看非 widget/window 包对象的方法
+    python scripts/search.py list funcs xc.POINT       # 用包名区分跨包同名对象
+    python scripts/search.py list pkg_doc wapi/d2d     # 查看 wapi/d2d 的完整包文档
     python scripts/search.py example_name 美化/编辑框   # 搜索示例包注释
     python scripts/search.py example_name draw/button  # 搜索示例名
 """
@@ -41,6 +53,9 @@
 import argparse
 import re
 import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 # 解决 Windows cmd 中文输出乱码：重新配置 stdout/stderr 使用 UTF-8
@@ -112,9 +127,36 @@ def color_print(text: str, color: str = "", bold: bool = False):
     print(f"{prefix}{color}{text}{suffix}")
 
 
+def _has_go_files(base: Path) -> bool:
+    """目录是否含至少一个 .go 文件 (源码完整性的最低校验).
+
+    目录存在不代表源码完整: 下载中断会留下空目录, 此时应提示重新下载,
+    而不是让各个命令静默返回 "查无结果" 或抛出 FileNotFoundError.
+    """
+    if not base.is_dir():
+        return False
+    try:
+        return next(base.rglob("*.go"), None) is not None
+    except OSError:
+        return False
+
+
+def _source_subdirs(exclude: set[str] | None = None) -> list[str]:
+    """列出 source/xcgui 下的包目录名; 目录缺失时返回空列表而不是抛异常."""
+    if not XCGUI_SRC.is_dir():
+        return []
+    return [
+        d.name for d in XCGUI_SRC.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+        and not (exclude and d.name in exclude)
+    ]
+
+
 def find_go_files(base: Path, subdirs: list[str] | None = None) -> list[Path]:
     """查找指定子目录下的所有 .go 文件."""
     files = []
+    if not base.is_dir():
+        return files
     if subdirs:
         for d in subdirs:
             p = base / d
@@ -247,7 +289,7 @@ def _get_func_comment(lines: list[str], func_line_idx: int) -> str:
     
     # 获取函数名
     func_line = lines[func_line_idx]
-    m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)', func_line)
+    m = re.search(r'func\s+\((?:\w+\s+)?\*?(\w+)\)\s+(\w+)', func_line)
     if m:
         func_name = m.group(2)
         
@@ -342,6 +384,88 @@ def _get_package_comment(file_path: Path) -> str:
     return re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
 
 
+def _iter_pkg_dirs() -> list[Path]:
+    """列出 source/xcgui 下所有含有效 .go 文件的包目录 (排除 main 包)."""
+    pkg_dirs: set[Path] = set()
+    if not XCGUI_SRC.exists():
+        return []
+    for go_file in XCGUI_SRC.rglob("*.go"):
+        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+            continue
+        try:
+            content = go_file.read_text(encoding="utf-8", errors="replace")
+            if re.search(r'^package\s+main\s*$', content, re.MULTILINE):
+                continue
+        except Exception:
+            pass
+        pkg_dirs.add(go_file.parent)
+    return sorted(pkg_dirs)
+
+
+def _get_package_doc_lines(doc_file: Path) -> list[str]:
+    """提取 doc.go 中 // Package 注释块的原始行.
+
+    去掉 "// " 前缀但保留空行、Markdown 标题与代码缩进, 供摘要和全文两种输出共用.
+    """
+    try:
+        text = doc_file.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+
+    lines: list[str] = []
+    in_pkg_comment = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        pkg_m = re.match(r'//\s*[Pp]ackage\s+\w+\s*(.*)', stripped)
+        if pkg_m and not in_pkg_comment:
+            in_pkg_comment = True
+            lines.append(pkg_m.group(1).strip())
+            continue
+        if not in_pkg_comment:
+            continue
+        if not stripped.startswith("//"):
+            break
+        content = stripped[2:]
+        # 去掉一个分隔空格, 保留更深缩进 (代码块靠它表达)
+        lines.append(content[1:] if content.startswith(" ") else content)
+
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+def _package_doc_summary(lines: list[str], limit: int = 110) -> tuple[str, bool]:
+    """把包注释压成一句摘要, 返回 (摘要, 是否有更多内容).
+
+    只取第一个 Markdown 标题 / 空行之前的第一段; 过长时优先在句号处断开.
+    """
+    para: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("# "):
+            if para:
+                break
+            continue
+        para.append(stripped)
+
+    summary = re.sub(r'\s+', ' ', ' '.join(para)).strip()
+    full = re.sub(r'\s+', ' ', ' '.join(x.strip() for x in lines if x.strip())).strip()
+    if not summary:
+        return full[:limit], len(full) > limit
+
+    if len(summary) > limit:
+        cut = summary[:limit]
+        for sep in ("。", "；", ". ", "; "):
+            pos = cut.rfind(sep)
+            if pos >= limit * 0.5:
+                summary = cut[:pos + len(sep)].rstrip()
+                break
+        else:
+            summary = cut.rstrip()
+        return summary, True
+    return summary, len(full) > len(summary)
+
+
 def _extract_func_name(line: str) -> str | None:
     """从函数定义行提取函数名.
 
@@ -382,10 +506,7 @@ def search_func(keyword: str) -> None:
     keywords = [k.strip() for k in keyword.split('/') if k.strip()]
 
     # 动态获取所有子目录，排除 xcc
-    search_dirs = [
-        d.name for d in XCGUI_SRC.iterdir()
-        if d.is_dir() and not d.name.startswith(".") and d.name != "xcc"
-    ]
+    search_dirs = _source_subdirs({"xcc"})
 
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索函数: \"{keyword}\"", C_CYAN, bold=True)
@@ -467,10 +588,7 @@ def search_type(keyword: str) -> None:
     keywords = [k.strip() for k in keyword.split('/') if k.strip()]
 
     # 动态获取所有子目录
-    search_dirs = [
-        d.name for d in XCGUI_SRC.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    ]
+    search_dirs = _source_subdirs()
 
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  搜索类型: \"{keyword}\"", C_CYAN, bold=True)
@@ -555,18 +673,92 @@ def search_type(keyword: str) -> None:
         color_print(f"  未找到匹配 \"{keyword}\" 的类型定义", C_RED)
 
 
+# ── 常量索引 ──────────────────────────────────────────────
+_CONST_BLOCK_RE = re.compile(r"^const\s*\(")
+_CONST_SINGLE_RE = re.compile(r"^const\s+[A-Za-z_]\w*")
+_CONST_ENTRY_RE = re.compile(r"^[A-Za-z_]\w*")
+_CONST_SKIP_FILES = {"deprecated.go", "doc.go"}
+
+
+@lru_cache(maxsize=None)
+def _const_file_context(go_file: Path):
+    """解析单个 go 文件的常量上下文, 结果按文件缓存.
+
+    返回 (所有行, 常量定义行索引集合, 常量注释行索引集合).
+    只把 const (...) 块内条目与单行 const X = ... 视为常量定义, 因此不会把
+    函数体里的赋值语句误判为常量; 中文检索只覆盖 const 块内及紧邻声明的注释.
+    """
+    try:
+        lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return (), frozenset(), frozenset()
+
+    def_lines = set()
+    comment_lines = set()
+    pending = []            # 连续注释行 (允许与声明之间夹空行)
+    type_doc = []           # 常量类型声明上方的分组说明 (type Xxx uint32 紧接着 const 块)
+    in_block = False
+    in_raw_string = False
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # const 块内的多行原始字符串, 内容行不属于常量声明
+        if in_block and in_raw_string:
+            if "`" in line:
+                in_raw_string = False
+            continue
+
+        if _CONST_BLOCK_RE.match(stripped):
+            in_block = True
+            comment_lines.update(pending)   # const ( 上方的分组说明
+            comment_lines.update(type_doc)  # type Xxx uint32 上方的分组说明
+            type_doc = []
+            pending = []
+            continue
+
+        if in_block and stripped.startswith(")"):
+            in_block = False
+            in_raw_string = False
+            pending = []
+            continue
+
+        if stripped.startswith("//"):
+            pending.append(i)
+            if in_block:
+                comment_lines.add(i)
+            continue
+
+        if not stripped:
+            continue
+
+        is_def = (
+            bool(_CONST_ENTRY_RE.match(stripped)) if in_block
+            else bool(_CONST_SINGLE_RE.match(stripped))
+        )
+        if is_def:
+            def_lines.add(i)
+            comment_lines.update(pending)
+            # 只看代码部分: 注释里出现反引号 (如 "// `键") 不应被当成原始字符串起始
+            code_part = stripped.split("//", 1)[0]
+            if in_block and code_part.count("`") % 2:
+                in_raw_string = True
+        # 常量往往按类型分组: "// 窗口样式" + type WS_ uint32 + const (...)
+        type_doc = list(pending) if stripped.startswith("type ") else []
+        pending = []
+
+    return tuple(lines), frozenset(def_lines), frozenset(comment_lines)
+
+
 def search_const(keyword: str) -> None:
     """搜索常量定义.
 
-    搜索范围:
-        - source/xcgui/xcc/  所有常量文件
-        - source/xcgui/edge/consts.go
-        - source/xcgui/edge/IStream.go
-        - source/xcgui/edge/webview2_iids.go
+    搜索范围: source/xcgui 下全部包的全部 go 文件 (排除 deprecated.go / doc.go / _test.go),
+    自动识别 const (...) 块与单行 const 声明.
 
     关键词规则:
         - 用 / 分割多个关键词，常量必须同时匹配所有关键词
-        - 支持在常量名和注释中搜索
+        - 英文只匹配常量定义行; 含中文时同时匹配常量定义行及其相邻注释
     """
     # 分割关键词
     keywords = [k.strip() for k in keyword.split('/') if k.strip()]
@@ -578,71 +770,31 @@ def search_const(keyword: str) -> None:
     color_print(f"{'='*60}\n", C_CYAN)
 
     found = 0
+    is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
-    # ── 搜索 xcc 目录 ──────────────────────────────
-    xcc_dir = XCGUI_SRC / "xcc"
+    # 全库枚举: xcc / wapi / edge / xc 等所有含 const 声明的包
     go_files = []
-
-    if xcc_dir.exists():
-        for go_file in sorted(xcc_dir.rglob("*.go")):
-            # 跳过 deprecated.go、doc.go 和 _test.go 文件
-            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+    if XCGUI_SRC.exists():
+        for go_file in sorted(XCGUI_SRC.rglob("*.go")):
+            if go_file.name in _CONST_SKIP_FILES or go_file.name.endswith("_test.go"):
                 continue
             go_files.append(go_file)
 
-    # ── 搜索 edge 目录下的指定文件 ──────────────────
-    edge_dir = XCGUI_SRC / "edge"
-    edge_const_files = [
-        edge_dir / "consts.go",
-        edge_dir / "IStream.go",
-        edge_dir / "webview2_iids.go",
-    ]
-
-    for edge_file in edge_const_files:
-        if edge_file.exists():
-            go_files.append(edge_file)
-
-    # ── 搜索所有收集到的文件 ────────────────────────
     for go_file in go_files:
-        try:
-            text = go_file.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        lines, def_lines, comment_lines = _const_file_context(go_file)
+        if not lines:
             continue
 
-        lines = text.splitlines()
-        in_const_block = False
-
-        # 判断是否为中文搜索
-        is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
-
         for i, line in enumerate(lines):
-            stripped = line.strip()
+            is_const_def = i in def_lines
+            is_comment_line = line.strip().startswith("//")
 
-            # 追踪是否在 const ( ) 块中
-            if "const (" in stripped:
-                in_const_block = True
-            if in_const_block and stripped == ")":
-                in_const_block = False
-                continue
-
-            # 判断是否为注释行
-            is_comment_line = stripped.startswith("//")
-
-            # 判断是否为常量定义行（非注释，有 = 或在 const 块中且非注释）
-            is_const_def = (
-                (in_const_block and not is_comment_line) or
-                ("=" in stripped and not is_comment_line)
-            )
-
-            # 根据搜索类型决定是否处理此行
+            # 英文只匹配常量定义行; 中文额外匹配与常量声明相邻的注释行
             if is_chinese:
-                # 中文搜索：处理常量定义行和注释行
-                if not is_const_def and not is_comment_line:
+                if not is_const_def and not (is_comment_line and i in comment_lines):
                     continue
-            else:
-                # 英文搜索：只处理常量定义行（不匹配纯注释行）
-                if not is_const_def:
-                    continue
+            elif not is_const_def:
+                continue
 
             # 检查所有关键词是否都匹配（在常量名或注释中）
             line_lower = line.lower()
@@ -771,8 +923,9 @@ def search_event(keyword: str) -> None:
     # ── 判断是否为中文搜索 ──────────────────────────
     is_chinese = any(re.search(r'[\u4e00-\u9fff]', kw) for kw in keywords)
 
-    # 搜索目录
-    search_dirs = ["widget", "window", "edge"]
+    # 动态枚举全部源码包: 事件函数目前集中在 widget / window / edge,
+    # 但不写死目录, 以便上游源码新增事件时自动纳入检索
+    search_dirs = _source_subdirs()
 
     for go_file in find_go_files(XCGUI_SRC, search_dirs):
         if go_file.name.endswith("_test.go"):
@@ -1026,444 +1179,336 @@ def search_example_name(keyword: str) -> None:
         color_print(f"  未找到匹配 \"{keyword}\" 的示例", C_RED)
 
 
-def _parse_struct_inheritance(go_file: Path) -> dict[str, str]:
-    """解析 Go 文件中的结构体嵌入关系.
+# ── 对象索引 (list funcs / list events) ───────────────────────────
+# 索引动态覆盖 source/xcgui 下全部包, 主键为 (包名, 类型名), 避免跨包同名对象互相覆盖.
+# 对象包含 struct / interface / 别名 / 具名基础类型; 方法同时支持指针与值接收者.
 
-    从 Go 文件中提取所有结构体定义及其嵌入的父结构体。
-    只处理当前 package 中的类型定义。
 
-    Args:
-        go_file: Go 文件路径
+@dataclass(frozen=True)
+class ObjectEntry:
+    """索引中的一个类型对象."""
 
-    Returns:
-        字典 {子结构体名: 父结构体名}
-        例如: {"Button": "Element", "Element": "Widget"}
+    name: str
+    pkg: str
+    file: Path
+    kind: str
+    is_public: bool
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.pkg, self.name)
+
+    @property
+    def label(self) -> str:
+        return f"{self.pkg}.{self.name}" if self.pkg else self.name
+
+
+@dataclass
+class ObjectIndex:
+    """全库对象索引: 类型、继承链与方法."""
+
+    entries: dict[tuple[str, str], ObjectEntry]
+    by_name: dict[str, list[ObjectEntry]]
+    parents: dict[tuple[str, str], tuple[str, str]]
+    chains: dict[tuple[str, str], list[tuple[str, str]]]
+    funcs: dict[tuple[str, str], list[tuple[int, str, str, Path]]]
+
+
+_TYPE_DEF_RE = re.compile(r"^type\s+(\w+)\s+(.*)$", re.M)
+# 允许省略接收者名、允许值接收者 (如 func (c ComProc) AddRef())
+_METHOD_LINE_RE = re.compile(r"^func\s+\(\s*(?:\w+\s+)?\*?(\w+)\s*\)\s+([A-Z]\w*)\s*\(")
+_EMBED_RE = re.compile(r"^([\w.]+)(?:\s+`[^`]*`)?\s*$")
+_PREFERRED_PKGS = ("widget", "window", "objectbase", "edge")
+_BASIC_TYPES = {
+    "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
+    "uint32", "uint64", "uintptr", "string", "bool", "byte", "rune",
+    "float32", "float64", "complex64", "complex128", "any", "error",
+}
+_SKIP_GO_FILES = {"deprecated.go", "doc.go"}
+
+
+def _is_source_go(go_file: Path) -> bool:
+    """是否为参与索引的源码文件 (排除废弃/文档/测试文件)."""
+    return go_file.name not in _SKIP_GO_FILES and not go_file.name.endswith("_test.go")
+
+
+def _iter_source_files():
+    """遍历 source/xcgui 下全部 Go 文件, 产出 (包名, 文件路径).
+
+    包名为顶层目录名; 根目录下的 .go 文件包名记为空字符串.
     """
-    inheritance = {}
-    try:
-        text = go_file.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return inheritance
+    if not XCGUI_SRC.is_dir():
+        return
+    for go_file in sorted(XCGUI_SRC.glob("*.go")):
+        if _is_source_go(go_file):
+            yield "", go_file
+    for pkg_dir in sorted(p for p in XCGUI_SRC.iterdir()
+                          if p.is_dir() and not p.name.startswith(".")):
+        for go_file in sorted(pkg_dir.rglob("*.go")):
+            if _is_source_go(go_file):
+                yield pkg_dir.name, go_file
 
+
+def _type_kind(rest: str) -> str:
+    """根据类型定义行的剩余部分判断类型种类."""
+    if rest.startswith("struct"):
+        return "struct"
+    if rest.startswith("interface"):
+        return "interface"
+    if rest.startswith("func"):
+        return "func"
+    if rest.startswith("="):
+        return "alias"
+    return "named"
+
+
+def _parse_embeddings(text: str) -> list[tuple[str, str]]:
+    """提取 [(子类型名, 嵌入父类型全名)].
+
+    与原逻辑一致只取第一个嵌入字段 (xcgui 采用单一继承链模型);
+    父类型可能带包名前缀, 如 objectbase.Widget.
+    """
     lines = text.splitlines()
+    results = []
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        # 匹配: type Button struct {
-        m = re.match(r'^type\s+(\w+)\s+struct\s*\{', stripped)
+        m = re.match(r"^type\s+(\w+)\s+struct\s*\{", line.strip())
         if not m:
             continue
-
         child = m.group(1)
-        # 向后查找嵌入的父结构体
-        # 查找范围: 从当前行到匹配的结束大括号
-        brace_count = 0
-        found_open = False
-        for j in range(i, min(i + 50, len(lines))):  # 最多查找50行
-            for ch in lines[j]:
-                if ch == '{':
-                    brace_count += 1
-                    found_open = True
-                elif ch == '}':
-                    brace_count -= 1
-
-            # 在结构体定义范围内查找嵌入字段
-            if found_open and brace_count == 0:
-                # 已到达结构体结束
+        brace = 0
+        opened = False
+        for j in range(i, min(i + 50, len(lines))):
+            brace += lines[j].count("{") - lines[j].count("}")
+            if "{" in lines[j]:
+                opened = True
+            if opened and brace == 0:
                 break
-
-            # 检查当前行是否是嵌入字段 (大写字母开头, 后面是空格或换行)
-            if j > i:  # 不是 type 定义行
-                embed_line = lines[j].strip()
-                # 嵌入字段格式: Element 或 Element `json:"-"`
-                # 嵌入字段特点: 只有类型名, 没有字段名
-                # 匹配带包名前缀的嵌入: objectbase.Widget
-                # 匹配不带包名前缀的嵌入: Element
-                embed_m = re.match(r'^([\w.]+)(?:\s+`.+`)?\s*$', embed_line)
-                if embed_m:
-                    full_name = embed_m.group(1)
-                    # 提取结构体名 (去掉包名前缀)
-                    parent = full_name.split('.')[-1]
-                    # 排除基本类型、空结构体和内置类型
-                    basic_types = ["int", "string", "bool", "byte", "rune", "float32", "float64", "int32", "int64", "uint32", "uint64", "uintptr"]
-                    if parent and parent not in basic_types:
-                        inheritance[child] = parent
-                        break  # 找到直接父类就停止
-
-    return inheritance
+            if j == i:
+                continue
+            em = _EMBED_RE.match(lines[j].strip())
+            if not em:
+                continue
+            parent = em.group(1).split(".")[-1]
+            if parent and parent not in _BASIC_TYPES:
+                results.append((child, em.group(1)))
+                break
+    return results
 
 
-def _build_inheritance_map() -> tuple[dict[str, list[str]], dict[str, str]]:
-    """构建完整的继承关系映射.
+def _resolve_parent_key(
+    pkg: str,
+    parent_full: str,
+    entries: dict[tuple[str, str], ObjectEntry],
+    by_name: dict[str, list[ObjectEntry]],
+    pkg_aliases: dict[str, str],
+) -> tuple[str, str] | None:
+    """把嵌入字段解析为 (包名, 类型名), 优先同包/带包名前缀的精确匹配."""
+    if "." in parent_full:
+        prefix, pname = parent_full.rsplit(".", 1)
+        target_pkg = pkg_aliases.get(prefix)
+        if target_pkg and (target_pkg, pname) in entries:
+            return (target_pkg, pname)
+        if (prefix, pname) in entries:
+            return (prefix, pname)
+        candidates = by_name.get(pname.lower(), [])
+    else:
+        pname = parent_full
+        if (pkg, pname) in entries:
+            return (pkg, pname)
+        candidates = by_name.get(pname.lower(), [])
 
-    Returns:
-        (inheritance_map, file_map):
-        - inheritance_map: {结构体名: [继承链]}
-        - file_map: {结构体名: 所在文件路径}
-    """
-    inheritance_map = {}  # {结构体名: [直接父类]}
-    file_map = {}  # {结构体名: 文件路径}
+    if len(candidates) == 1:
+        return candidates[0].key
+    if candidates:
+        same = [e for e in candidates if e.pkg == pkg]
+        if len(same) == 1:
+            return same[0].key
+        return min(candidates, key=lambda e: (
+            _PREFERRED_PKGS.index(e.pkg)
+            if e.pkg in _PREFERRED_PKGS else len(_PREFERRED_PKGS),
+            e.pkg,
+        )).key
+    return None
 
-    # 扫描 widget、window、objectbase 和 edge 目录
-    search_dirs = ["widget", "window", "objectbase", "edge"]
-    for subdir in search_dirs:
-        dir_path = XCGUI_SRC / subdir
-        if not dir_path.exists():
+
+@lru_cache(maxsize=1)
+def build_object_index() -> ObjectIndex:
+    """扫描全库构建对象索引 (一次命令内只扫描一次, 结果缓存)."""
+    entries: dict[tuple[str, str], ObjectEntry] = {}
+    by_name: dict[str, list[ObjectEntry]] = defaultdict(list)
+    funcs: dict[tuple[str, str], list[tuple[int, str, str, Path]]] = defaultdict(list)
+    raw_parents: list[tuple[str, str, str]] = []  # (包名, 子类型名, 父类型全名)
+    pkg_aliases: dict[str, str] = {}  # Go package 名 -> 顶层目录名
+
+    for pkg, go_file in _iter_source_files():
+        try:
+            text = go_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
             continue
+        lines = text.splitlines()
 
-        for go_file in sorted(dir_path.rglob("*.go")):
-            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
+        package_m = re.search(r"^package\s+(\w+)", text, re.M)
+        if package_m and pkg:
+            pkg_aliases.setdefault(package_m.group(1), pkg)
+
+        for m in _TYPE_DEF_RE.finditer(text):
+            name, rest = m.group(1), m.group(2).strip()
+            entry = ObjectEntry(name, pkg, go_file, _type_kind(rest), name[0].isupper())
+            if entry.key not in entries:
+                by_name[name.lower()].append(entry)
+            entries[entry.key] = entry
+
+        for child, parent_full in _parse_embeddings(text):
+            raw_parents.append((pkg, child, parent_full))
+
+        for line_no, line in enumerate(lines, 1):
+            fm = _METHOD_LINE_RE.match(line)
+            if not fm:
                 continue
+            recv, func_name = fm.group(1), fm.group(2)
+            comment = _get_func_comment(lines, line_no - 1)
+            funcs[(pkg, recv)].append((line_no, func_name, comment, go_file))
 
-            # 记录结构体到文件的映射
-            try:
-                text = go_file.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                continue
+    parents: dict[tuple[str, str], tuple[str, str]] = {}
+    for pkg, child, parent_full in raw_parents:
+        child_key = (pkg, child)
+        if child_key not in entries:
+            continue
+        parent_key = _resolve_parent_key(pkg, parent_full, entries, by_name, pkg_aliases)
+        if parent_key and parent_key != child_key:
+            parents[child_key] = parent_key
 
-            # 提取所有结构体名
-            for m in re.finditer(r'^type\s+(\w+)\s+struct\s*\{', text, re.MULTILINE):
-                struct_name = m.group(1)
-                file_map[struct_name] = str(go_file)
-
-            # 解析继承关系
-            inherits = _parse_struct_inheritance(go_file)
-            inheritance_map.update(inherits)
-
-    # 构建完整继承链
-    def _get_chain(name: str, visited: set[str] | None = None) -> list[str]:
-        """获取完整的继承链."""
-        if visited is None:
-            visited = set()
-        if name in visited:
-            return []
-        visited.add(name)
-
-        if name not in inheritance_map:
-            return []
-
-        parent = inheritance_map[name]
-        chain = [parent]
-        chain.extend(_get_chain(parent, visited))
-        return chain
-
-    # 为每个结构体计算完整继承链
-    full_chains = {}
-    for struct_name in set(list(inheritance_map.keys()) + list(file_map.keys())):
-        chain = _get_chain(struct_name)
+    chains: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for key in entries:
+        chain = []
+        seen = {key}
+        current = parents.get(key)
+        while current and current not in seen:
+            chain.append(current)
+            seen.add(current)
+            current = parents.get(current)
         if chain:
-            full_chains[struct_name] = chain
+            chains[key] = chain
 
-    return full_chains, file_map
+    return ObjectIndex(
+        entries=dict(entries),
+        by_name=dict(by_name),
+        parents=parents,
+        chains=chains,
+        funcs=dict(funcs),
+    )
 
 
-def _find_event_functions(go_file: Path) -> list[tuple[int, str, str]]:
-    """在 Go 文件中查找所有事件函数 (AddEvent_ 或 Event_ 开头).
+def resolve_object(index: ObjectIndex, query: str) -> tuple[ObjectEntry | None, list[ObjectEntry]]:
+    """解析对象名, 支持 "对象名" 与 "包名.对象名".
 
-    Args:
-        go_file: Go 文件路径
-
-    Returns:
-        [(行号, 函数名, 注释), ...]
+    返回 (最匹配项, 全部同名候选). 同名时优先公开类型、方法数多者,
+    再按 widget/window/objectbase/edge 的常用顺序选择.
     """
-    results = []
-    try:
-        lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:
-        return results
+    pkg_filter = None
+    name = query.strip()
+    if "." in name:
+        pkg_filter, name = name.rsplit(".", 1)
+    candidates = list(index.by_name.get(name.lower(), []))
+    if pkg_filter:
+        candidates = [e for e in candidates if e.pkg.lower() == pkg_filter.lower()]
+    if not candidates:
+        return None, []
 
-    for i, line in enumerate(lines):
-        # 匹配 AddEvent_ 或 Event_ 开头的函数定义
-        # func (b *Button) AddEvent_BnClick(...)
-        # func (w *WebView) Event_NavigationCompleted(...)
-        m = re.search(r'func\s+\(\w+\s+\*\w+\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
-        if m:
-            func_name = m.group(1)
-            # 获取函数上方的注释
-            comment = _get_func_comment(lines, i)
-            results.append((i + 1, func_name, comment))
+    exact = [e for e in candidates if e.name == name]
+    if exact:
+        candidates = exact
+    public = [e for e in candidates if e.is_public]
+    if public:
+        candidates = public
 
-    return results
+    def score(entry: ObjectEntry):
+        method_count = len(index.funcs.get(entry.key, ()))
+        order = (_PREFERRED_PKGS.index(entry.pkg)
+                 if entry.pkg in _PREFERRED_PKGS else len(_PREFERRED_PKGS))
+        return (method_count, -order, entry.pkg)
 
-
-def _find_event_functions_in_dir(dir_path: Path, target_structs: list[str], include_event_prefix: bool = False) -> list[tuple[str, int, str, str]]:
-    """在指定目录下搜索事件函数，且接收者是目标结构体之一.
-
-    Args:
-        dir_path: 目录路径
-        target_structs: 目标结构体名列表
-        include_event_prefix: 是否包含 Event_ 开头的函数
-
-    Returns:
-        [(结构体名, 行号, 函数名, 注释), ...]
-    """
-    results = []
-    
-    if not dir_path.exists():
-        return results
-    
-    # 遍历目录下所有 Go 文件
-    for go_file in sorted(dir_path.rglob("*.go")):
-        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
-            continue
-        
-        try:
-            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
-        except Exception:
-            continue
-        
-        for i, line in enumerate(lines):
-            # 匹配 AddEvent_ 或 Event_ 开头的函数定义
-            # func (w *WebViewEventImpl) Event_NavigationCompleted(...)
-            m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+((?:AddEvent_|Event_)\w+)\s*\(', line)
-            if m:
-                receiver_type = m.group(1)  # 接收者类型名
-                func_name = m.group(2)
-                
-                # 如果不包含 Event_ 开头的函数，跳过
-                if not include_event_prefix and func_name.startswith("Event_"):
-                    continue
-                
-                # 检查接收者类型是否在目标结构体列表中
-                if receiver_type in target_structs:
-                    # 获取函数上方的注释
-                    comment = _get_func_comment(lines, i)
-                    results.append((receiver_type, i + 1, func_name, comment))
-    
-    return results
-
-
-def _find_all_functions_in_dir(dir_path: Path, target_structs: list[str], include_event_prefix: bool = False) -> list[tuple[str, int, str, str]]:
-    """在指定目录下搜索所有方法函数，且接收者是目标结构体之一.
-
-    Args:
-        dir_path: 目录路径
-        target_structs: 目标结构体名列表
-        include_event_prefix: 是否包含 Event_ 开头的函数
-
-    Returns:
-        [(结构体名, 行号, 函数名, 注释), ...]
-    """
-    results = []
-    
-    if not dir_path.exists():
-        return results
-    
-    # 遍历目录下所有 Go 文件
-    for go_file in sorted(dir_path.rglob("*.go")):
-        if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
-            continue
-        
-        try:
-            lines = go_file.read_text(encoding="utf-8", errors="replace").splitlines()
-        except Exception:
-            continue
-        
-        for i, line in enumerate(lines):
-            # 匹配所有方法定义
-            # func (b *Button) MethodName(...)
-            m = re.search(r'func\s+\(\w+\s+\*(\w+)\)\s+(\w+)\s*\(', line)
-            if m:
-                receiver_type = m.group(1)
-                func_name = m.group(2)
-                
-                # 检查接收者类型是否在目标结构体列表中
-                if receiver_type in target_structs:
-                    # 只显示公开方法（首字母大写）
-                    if func_name[0].isupper():
-                        # 如果不包含 Event_ 开头的函数，跳过
-                        if not include_event_prefix and func_name.startswith("Event_"):
-                            continue
-                        
-                        # 获取函数上方的注释
-                        comment = _get_func_comment(lines, i)
-                        results.append((receiver_type, i + 1, func_name, comment))
-    
-    return results
+    return max(candidates, key=score), candidates
 
 
 def _is_object_in_edge(obj_name: str) -> bool:
-    """检查对象是否在edge目录中.
+    """对象是否属于 edge 包 (edge 事件以 Event_ 开头, 需默认包含)."""
+    entry, _ = resolve_object(build_object_index(), obj_name)
+    return bool(entry and entry.pkg == "edge")
 
-    Args:
-        obj_name: 对象名 (不区分大小写)
 
-    Returns:
-        是否在edge目录中
-    """
-    # 构建继承关系映射
-    _, file_map = _build_inheritance_map()
-    
-    # 不区分大小写查找对象
-    for name, file_path in file_map.items():
-        if name.lower() == obj_name.lower():
-            # 检查文件路径是否包含edge目录
-            return "edge" in file_path.replace("\\", "/")
-    
-    return False
+def _chain_label(keys: list[tuple[str, str]]) -> str:
+    """继承链文字: 跨包时带包名前缀, 便于区分同名对象."""
+    if len({k[0] for k in keys}) <= 1:
+        return " -> ".join(k[1] for k in keys)
+    return " -> ".join(f"{k[0]}.{k[1]}" if k[0] else k[1] for k in keys)
+
+
+def _print_object_members(obj_name: str, only_events: bool, include_event_prefix: bool) -> None:
+    """列出对象及继承链上的方法/事件, 基于全库索引."""
+    index = build_object_index()
+    entry, candidates = resolve_object(index, obj_name)
+    noun = "事件" if only_events else "方法"
+
+    if entry is None:
+        color_print(f"  错误: 未找到对象 '{obj_name}'", C_RED)
+        color_print("  提示: 用 list objects <包名> 查看包内对象, list packages 查看全部包", C_GRAY)
+        color_print("  提示: 同名对象可用 '包名.对象名' 精确指定 (如 widget.Button)", C_GRAY)
+        return
+
+    if len(candidates) > 1:
+        others = [e.label for e in candidates if e.key != entry.key]
+        hint = f"; 同名对象还有 {', '.join(others)}, 可用 '包名.对象名' 精确指定" if others else ""
+        color_print(f"  提示: 已选择 {entry.label}{hint}", C_GRAY)
+
+    keys = [entry.key] + index.chains.get(entry.key, [])
+    color_print(f"  继承链: {_chain_label(keys)}", C_CYAN)
+    if include_event_prefix:
+        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
+    print()
+
+    groups: list[tuple[str, list[tuple[int, str, str, Path]]]] = []
+    for key in keys:
+        methods = list(index.funcs.get(key, ()))
+        if only_events:
+            methods = [m for m in methods if m[1].startswith(("AddEvent_", "Event_"))]
+        if not include_event_prefix:
+            methods = [m for m in methods if not m[1].startswith("Event_")]
+        if methods:
+            groups.append((key[1], methods))
+
+    if not groups:
+        color_print(f"  未找到 {entry.label} 及其父类的{noun}", C_YELLOW)
+        return
+
+    max_func_len = max(len(m[1]) for _, methods in groups for m in methods)
+    total = 0
+    for label, methods in groups:
+        color_print(f"  {C_BOLD}{C_CYAN}【{label}】{C_RESET}")
+        total += len(methods)
+        for line_no, func_name, comment, go_file in methods:
+            padding = " " * (max_func_len - len(func_name))
+            if comment:
+                print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
+            else:
+                try:
+                    rel_path = go_file.relative_to(PROJECT_ROOT)
+                except ValueError:
+                    rel_path = go_file
+                print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
+
+    color_print(f"  共找到 {total} 个{noun}", C_YELLOW)
 
 
 def _list_object_funcs(obj_name: str, include_event_prefix: bool = False) -> None:
-    """列出指定对象及其继承链上的所有公开方法.
-
-    Args:
-        obj_name: 对象名 (不区分大小写)
-        include_event_prefix: 是否包含 Event_ 开头的函数
-    """
-    # 构建继承关系映射
-    inheritance_chain, file_map = _build_inheritance_map()
-
-    # 不区分大小写查找对象
-    target_struct = None
-    for name in file_map.keys():
-        if name.lower() == obj_name.lower():
-            target_struct = name
-            break
-
-    if not target_struct:
-        color_print(f"  错误: 未找到对象 '{obj_name}'", C_RED)
-        color_print(f"  提示: 可用对象请运行: python scripts/search.py list widgets", C_GRAY)
-        return
-
-    # 获取继承链
-    chain = inheritance_chain.get(target_struct, [])
-    all_structs = [target_struct] + chain
-
-    color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
-    if include_event_prefix:
-        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
-    print()
-
-    # 收集所有方法
-    all_funcs = []  # [(结构体名, 行号, 函数名, 注释)]
-
-    # 按目录分组处理（避免重复搜索）
-    processed_dirs = set()
-    
-    for struct_name in all_structs:
-        if struct_name not in file_map:
-            continue
-
-        go_file = Path(file_map[struct_name])
-        if not go_file.exists():
-            continue
-        
-        # 获取文件所在目录
-        dir_path = go_file.parent
-        
-        # 如果已经处理过这个目录，跳过
-        if str(dir_path) in processed_dirs:
-            continue
-        processed_dirs.add(str(dir_path))
-        
-        # 在当前目录及其子目录中搜索所有方法
-        funcs = _find_all_functions_in_dir(dir_path, all_structs, include_event_prefix)
-        all_funcs.extend(funcs)
-
-    if not all_funcs:
-        color_print(f"  未找到 {target_struct} 及其父类的方法", C_YELLOW)
-        return
-
-    # 计算最大函数名长度（用于对齐注释）
-    max_func_len = max(len(func_name) for _, _, func_name, _ in all_funcs)
-
-    # 按结构体分组显示
-    current_struct = None
-    for struct_name, line_no, func_name, comment in all_funcs:
-        if struct_name != current_struct:
-            current_struct = struct_name
-            color_print(f"  {C_BOLD}{C_CYAN}【{struct_name}】{C_RESET}")
-
-        # 显示方法名和注释（两列格式，注释对齐）
-        padding = " " * (max_func_len - len(func_name))
-        if comment:
-            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
-        else:
-            rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
-            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
-
-    color_print(f"  共找到 {len(all_funcs)} 个方法", C_YELLOW)
+    """列出指定对象及继承链上的所有公开方法 (全库索引)."""
+    _print_object_members(obj_name, False, include_event_prefix)
 
 
 def _list_object_events(obj_name: str, include_event_prefix: bool = False) -> None:
-    """列出指定对象及其继承链上的所有事件函数 (AddEvent_ 或 Event_ 开头).
+    """列出指定对象及继承链上的所有事件函数 (全库索引)."""
+    _print_object_members(obj_name, True, include_event_prefix)
 
-    Args:
-        obj_name: 对象名 (不区分大小写)
-        include_event_prefix: 是否包含 Event_ 开头的函数
-    """
-    # 构建继承关系映射
-    inheritance_chain, file_map = _build_inheritance_map()
-
-    # 不区分大小写查找对象
-    target_struct = None
-    for name in file_map.keys():
-        if name.lower() == obj_name.lower():
-            target_struct = name
-            break
-
-    if not target_struct:
-        color_print(f"  错误: 未找到对象 '{obj_name}'", C_RED)
-        color_print(f"  提示: 可用对象请运行: python scripts/search.py list widgets", C_GRAY)
-        return
-
-    # 获取继承链
-    chain = inheritance_chain.get(target_struct, [])
-    all_structs = [target_struct] + chain
-
-    color_print(f"  继承链: {' -> '.join(all_structs)}", C_CYAN)
-    if include_event_prefix:
-        color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
-    print()
-
-    # 收集所有事件
-    all_events = []  # [(结构体名, 行号, 函数名, 注释)]
-
-    # 按目录分组处理（避免重复搜索）
-    processed_dirs = set()
-    
-    for struct_name in all_structs:
-        if struct_name not in file_map:
-            continue
-
-        go_file = Path(file_map[struct_name])
-        if not go_file.exists():
-            continue
-        
-        # 获取文件所在目录
-        dir_path = go_file.parent
-        
-        # 如果已经处理过这个目录，跳过
-        if str(dir_path) in processed_dirs:
-            continue
-        processed_dirs.add(str(dir_path))
-        
-        # 在当前目录及其子目录中搜索事件函数
-        events = _find_event_functions_in_dir(dir_path, all_structs, include_event_prefix)
-        all_events.extend(events)
-
-    if not all_events:
-        color_print(f"  未找到 {target_struct} 及其父类的事件函数", C_YELLOW)
-        return
-
-    # 计算最大函数名长度（用于对齐注释）
-    max_func_len = max(len(func_name) for _, _, func_name, _ in all_events)
-
-    # 按结构体分组显示
-    current_struct = None
-    for struct_name, line_no, func_name, comment in all_events:
-        if struct_name != current_struct:
-            current_struct = struct_name
-            color_print(f"  {C_BOLD}{C_CYAN}【{struct_name}】{C_RESET}")
-
-        # 显示事件名和注释（两列格式，注释对齐）
-        padding = " " * (max_func_len - len(func_name))
-        if comment:
-            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}{comment}{C_RESET}")
-        else:
-            rel_path = Path(file_map[struct_name]).relative_to(PROJECT_ROOT)
-            print(f"    {C_GREEN}{func_name}{C_RESET}{padding}  {C_GRAY}({rel_path}:{line_no}){C_RESET}")
-
-    color_print(f"  共找到 {len(all_events)} 个事件", C_YELLOW)
 
 
 def _get_type_comment(file_path: Path, type_name: str) -> str:
@@ -1521,14 +1566,16 @@ def _get_type_comment(file_path: Path, type_name: str) -> str:
     return re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
 
 
-def _list_package_objects(pkg_name: str) -> None:
+def _list_package_objects(pkg_name: str, label: str = "公开对象") -> None:
     """列出指定包的所有公开对象.
 
     在 XCGUI_SRC / <pkg_name> 目录下查找所有 .go 文件，
     提取公开的类型定义及其注释描述。
+    list widgets / list windows 复用此实现, 只换计数文案, 避免两套清单口径不一致.
 
     Args:
         pkg_name: 包名（如 widget, window, app, font 等）
+        label: 结尾计数用的名称（控件 / 窗口对象 / 公开对象）
     """
     pkg_dir = XCGUI_SRC / pkg_name
     if not pkg_dir.exists():
@@ -1581,7 +1628,7 @@ def _list_package_objects(pkg_name: str) -> None:
         else:
             color_print(f"  {C_BOLD}{C_GREEN}{type_name:25}{C_RESET} {C_GRAY}({rel_path.name}){C_RESET}")
 
-    color_print(f"\n  {C_YELLOW}共 {found} 个公开对象{C_RESET}")
+    color_print(f"\n  {C_YELLOW}共 {found} 个{label}{C_RESET}")
 
 
 def _list_package_funcs(pkg_name: str) -> None:
@@ -1645,6 +1692,48 @@ def _list_package_funcs(pkg_name: str) -> None:
     color_print(f"\n  {C_YELLOW}共 {found} 个公开非对象函数{C_RESET}")
 
 
+def _list_package_doc(pkg_name: str) -> None:
+    """输出指定包 doc.go 的完整 // Package 注释 (保留 Markdown 结构与代码块缩进)."""
+    if not pkg_name:
+        color_print("  错误: pkg_doc 命令需要指定包名", C_RED)
+        color_print("  用法: python scripts/search.py list pkg_doc <包名>", C_GRAY)
+        color_print("  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+        return
+
+    dirs = _iter_pkg_dirs()
+    # 允许 wapi/com、wapi\com 以及末段包名 com 三种写法
+    key = pkg_name.strip().replace("\\", "/").strip("/")
+    matches = [d for d in dirs if d.relative_to(XCGUI_SRC).as_posix() == key]
+    if not matches:
+        matches = [d for d in dirs
+                   if d.relative_to(XCGUI_SRC).as_posix().endswith("/" + key)]
+
+    if len(matches) != 1:
+        if not matches:
+            color_print(f"  错误: 未找到包 '{pkg_name}'", C_RED)
+        else:
+            color_print(f"  包名 '{pkg_name}' 匹配到多个包, 请用完整路径指定:", C_RED)
+            for d in matches:
+                color_print(f"    {d.relative_to(XCGUI_SRC).as_posix()}", C_GRAY)
+        color_print("  提示: 可用包请运行: python scripts/search.py list packages", C_GRAY)
+        return
+
+    d = matches[0]
+    rel = d.relative_to(XCGUI_SRC).as_posix()
+    doc_file = d / "doc.go"
+    lines = _get_package_doc_lines(doc_file)
+    if not lines:
+        color_print(f"  {rel} 没有 // Package 注释 (doc.go 不存在或格式不同)", C_YELLOW)
+        return
+
+    color_print(f"  包: {rel}    文档: {doc_file.relative_to(PROJECT_ROOT).as_posix()}", C_CYAN)
+    print()
+    for line in lines:
+        print(f"    {line}")
+    print()
+    color_print(f"  共 {len(lines)} 行", C_YELLOW)
+
+
 def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool = False) -> None:
     """列出指定子命令下的所有文件/内容.
 
@@ -1656,36 +1745,19 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
     color_print(f"\n{'='*60}", C_CYAN)
     color_print(f"  列出: {subcommand}", C_CYAN, bold=True)
     if extra_arg:
-        # pkg_funcs 的参数为包名, 其余 (events/funcs/objects) 为对象名
-        arg_label = "包名" if subcommand == "pkg_funcs" else "对象"
+        # pkg_funcs / pkg_doc 的参数为包名, 其余 (events/funcs/objects) 为对象名
+        arg_label = "包名" if subcommand in ("pkg_funcs", "pkg_doc", "pkgdoc", "package") else "对象"
         color_print(f"  {arg_label}: {extra_arg}", C_CYAN)
     if include_event_prefix:
         color_print(f"  {C_GRAY}(包含 Event_ 开头的函数){C_RESET}")
     color_print(f"{'='*60}\n", C_CYAN)
 
-    if subcommand == "widgets":
-        widget_dir = XCGUI_SRC / "widget"
-        found = 0
-        if widget_dir.exists():
-            for f in sorted(widget_dir.glob("*.go")):
-                if f.name.endswith("_test.go") or f.name == "doc.go" or f.name == "deprecated.go":
-                    continue
-                # 读取文件提取类型名和注释
-                text = f.read_text(encoding="utf-8", errors="replace")
-                # 提取类型名: type Xxx struct {
-                type_m = re.search(r'^type\s+(\w+)\s+struct\s*\{', text, re.MULTILINE)
-                if not type_m:
-                    continue
-                type_name = type_m.group(1)
-                found += 1
-                # 匹配注释: // 描述文字. 或 // Button 按钮控件.
-                comment_m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
-                if comment_m:
-                    desc = comment_m.group(1).strip()
-                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
-                else:
-                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET}")
-        color_print(f"\n  {C_YELLOW}共 {found} 个控件{C_RESET}")
+    if subcommand in ("widgets", "windows"):
+        # 与 list objects 共用同一套对象清单, 避免漏掉同文件内的第二个类型
+        if subcommand == "widgets":
+            _list_package_objects("widget", "控件")
+        else:
+            _list_package_objects("window", "窗口对象")
 
     elif subcommand == "examples":
         if EXAMPLE_SRC.exists():
@@ -1736,99 +1808,26 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
                     color_print(f"    {name:35} {C_GRAY}{desc}{C_RESET}")
 
     elif subcommand == "packages":
-        # 递归查找所有包含 .go 文件的目录（排除测试文件和废弃文件）
-        pkg_dirs = set()
-        for go_file in XCGUI_SRC.rglob("*.go"):
-            if go_file.name in {"deprecated.go", "doc.go"} or go_file.name.endswith("_test.go"):
-                continue
-            # 排除 main 包
-            try:
-                content = go_file.read_text(encoding="utf-8", errors="replace")
-                if re.search(r'^package\s+main\s*$', content, re.MULTILINE):
-                    continue
-            except Exception:
-                pass
-            pkg_dirs.add(go_file.parent)
-
+        # 递归查找所有包含 .go 文件的目录 (排除测试文件、废弃文件与 main 包)
         found = 0
-        for d in sorted(pkg_dirs):
+        truncated: list[str] = []
+        for d in _iter_pkg_dirs():
             rel_path = d.relative_to(XCGUI_SRC)
-            # 计数该目录下符合条件的 .go 文件
             go_count = len([f for f in d.glob("*.go")
                             if f.name not in {"deprecated.go", "doc.go"}
                             and not f.name.endswith("_test.go")])
             found += 1
-            # 读取 doc.go 注释 (支持多行注释)
-            desc = ""
-            doc_file = d / "doc.go"
-            if doc_file.exists():
-                text = doc_file.read_text(encoding="utf-8", errors="replace")
-                # 提取 Package 注释块 (多行)
-                lines = text.split('\n')
-                in_pkg_comment = False
-                comment_lines = []
-                for line in lines:
-                    stripped = line.strip()
-                    if stripped.startswith('// Package'):
-                        in_pkg_comment = True
-                        # 提取 Package 后面的描述
-                        m = re.search(r'//\s*Package\s+\w+\s+(.*)', line)
-                        if m and m.group(1).strip():
-                            comment_lines.append(m.group(1).strip())
-                    elif in_pkg_comment:
-                        if stripped.startswith('//'):
-                            content = stripped[2:].strip()
-                            if content:
-                                comment_lines.append(content)
-                        else:
-                            # 非注释行，结束
-                            break
-                if comment_lines:
-                    # 合并多行，去除多余空白
-                    desc = re.sub(r'\s+', ' ', ' '.join(comment_lines)).strip()
-            color_print(f"  {C_BOLD}{C_GREEN}{str(rel_path):30}{C_RESET} {C_GRAY}{go_count:>4} 文件  {desc}{C_RESET}")
+            # 只显示包注释首段: 部分包 (svgp / wapi/com / wapi/d2d) 的 doc.go 是长篇 Markdown
+            desc, has_more = _package_doc_summary(_get_package_doc_lines(d / "doc.go"))
+            if has_more:
+                desc += "…"
+                truncated.append(rel_path.as_posix())
+            color_print(f"  {C_BOLD}{C_GREEN}{rel_path.as_posix():30}{C_RESET} {C_GRAY}{go_count:>4} 文件  {desc}{C_RESET}")
 
         color_print(f"\n  {C_YELLOW}共 {found} 个包{C_RESET}")
-
-    elif subcommand == "windows":
-        # 列出 window 包的所有公开对象
-        window_dir = XCGUI_SRC / "window"
-        found = 0
-        if window_dir.exists():
-            for f in sorted(window_dir.glob("*.go")):
-                if f.name.endswith("_test.go") or f.name == "doc.go" or f.name == "deprecated.go":
-                    continue
-                # 读取文件提取类型名和注释
-                text = f.read_text(encoding="utf-8", errors="replace")
-                # 提取类型名: type Xxx struct { 或 type Xxx = ...
-                # 只匹配大写字母开头的公开类型
-                type_patterns = [
-                    re.search(r'^type\s+([A-Z]\w*)\s+struct\s*\{', text, re.MULTILINE),
-                    re.search(r'^type\s+([A-Z]\w*)\s*=\s*\w+', text, re.MULTILINE),
-                ]
-                type_name = None
-                for m in type_patterns:
-                    if m:
-                        type_name = m.group(1)
-                        break
-                
-                if not type_name:
-                    continue
-                
-                found += 1
-                # 尝试从 package 注释或文件头部注释获取描述
-                desc = _get_package_comment(f)
-                if not desc:
-                    # 尝试从文件中的第一个类型注释获取
-                    comment_m = re.search(r'//\s*(?:[A-Za-z]+\s+)?([^.\n]+?)\.', text)
-                    if comment_m:
-                        desc = comment_m.group(1).strip()
-                
-                if desc:
-                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET} {C_GRAY}{desc}{C_RESET}")
-                else:
-                    color_print(f"  {C_BOLD}{C_GREEN}{type_name:20}{C_RESET}")
-        color_print(f"\n  {C_YELLOW}共 {found} 个窗口对象{C_RESET}")
+        if truncated:
+            color_print("  包描述为首段摘要; 查看完整文档: python scripts/search.py list pkg_doc <包名>", C_GRAY)
+            color_print(f"  含完整文档的包: {', '.join(truncated)}", C_GRAY)
 
     elif subcommand == "events":
         if not extra_arg:
@@ -1870,6 +1869,14 @@ def search_list(subcommand: str, extra_arg: str = "", include_event_prefix: bool
         # 列出指定包的所有公开非对象函数 (包级函数, 无接收者)
         _list_package_funcs(extra_arg)
 
+    elif subcommand in ("pkg_doc", "pkgdoc", "package"):
+        # 输出指定包 doc.go 的完整包注释
+        _list_package_doc(extra_arg)
+
+    else:
+        color_print(f"  错误: 未知的 list 子命令 '{subcommand}'", C_RED)
+        color_print("  可用: widgets / windows / packages / examples / events / funcs / objects / pkg_funcs / pkg_doc", C_GRAY)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1887,12 +1894,27 @@ def main():
 列表子命令:
   list widgets       列出 widget 包所有公开对象
   list windows       列出 window 包所有公开对象
-  list packages      列出所有源码包
+  list packages      列出所有源码包 (包描述只取首段摘要)
   list examples      列出所有示例
   list objects <包名>       列出指定包的所有公开对象 (含描述)
   list pkg_funcs <包名>     列出指定包的所有公开非对象函数 (包级函数, 无接收者, 按函数名排序)
+  list pkg_doc <包名>       输出指定包 doc.go 的完整包文档 (保留 Markdown 结构与代码块)
   list events <对象名>       列出指定对象的所有事件 (含继承链, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
   list funcs <对象名>        列出指定对象的所有方法 (含继承链, 含事件, 不含 Event 开头函数, edge目录自动包含 Event 开头函数)
+
+包文档:
+  list packages 只显示包注释首段摘要; 要读完整文档用 list pkg_doc <包名>,
+  包名支持 wapi/d2d、wapi\\d2d 或末段名 d2d.
+
+对象范围:
+  list funcs / list events 适用于 source/xcgui 下全部包的对象. 同名对象可用
+  "包名.对象名" 指定 (如 app.App / xc.POINT), 不指定时自动选择公开且方法最多的
+  那个, 并提示其它同名对象.
+
+常量范围:
+  const 覆盖 source/xcgui 下全部包, 包含 xcc (核心常量) / wapi (Windows API 常量)
+  / edge (WebView2 常量) / xc 等. 英文匹配常量定义行, 含中文时额外匹配常量
+  分组说明与条目注释.
 
 关键词规则:
   - 用 / 分割多个关键词，会同时匹配所有关键词, 支持中英文, 不区分大小写
@@ -1918,6 +1940,9 @@ def main():
     python scripts/search.py list funcs button         # 列出 Button 的所有方法名(含继承链,含事件)
     python scripts/search.py list objects window       # 列出 window 包所有公开对象 (含描述)
     python scripts/search.py list pkg_funcs svg        # 列出 svg 包所有公开非对象函数 (包级函数)
+    python scripts/search.py list funcs app.App        # 查看非 widget/window 包对象的方法
+    python scripts/search.py list funcs xc.POINT       # 用包名区分跨包同名对象
+    python scripts/search.py list pkg_doc wapi/d2d     # 查看 wapi/d2d 的完整包文档
     python scripts/search.py example_name 美化/编辑框   # 搜索示例包注释
     python scripts/search.py example_name draw/button  # 搜索示例名
         """,
@@ -1944,17 +1969,31 @@ def main():
     if args.color:
         _enable_color(True)
 
-    # 验证路径
-    if not SOURCE_DIR.exists():
+    # 验证源码完整性: 目录存在不代表源码完整 (下载中断会留下空目录/半套源码)
+    if not SOURCE_DIR.is_dir():
         color_print(f"错误: source 目录不存在: {SOURCE_DIR}", C_RED)
+        color_print("请先执行 python scripts/download.py 下载源码", C_RED)
         color_print("请确保在项目根目录 (go-xcgui-dev) 下运行此脚本", C_RED)
         sys.exit(1)
+
+    example_only = args.command in ("example", "example_name") or (
+        args.command == "list" and bool(args.args) and args.args[0].lower() == "examples"
+    )
+    xcgui_ok = _has_go_files(XCGUI_SRC)
+    example_ok = _has_go_files(EXAMPLE_SRC)
+    if not xcgui_ok:
+        color_print(f"警告: 源码目录缺失或不完整: {XCGUI_SRC.relative_to(PROJECT_ROOT).as_posix()}/", C_YELLOW)
+    if not example_ok:
+        color_print(f"警告: 源码目录缺失或不完整: {EXAMPLE_SRC.relative_to(PROJECT_ROOT).as_posix()}/", C_YELLOW)
+    if (example_only and not example_ok) or (not example_only and not xcgui_ok):
+        color_print("请先执行 python scripts/download.py 下载源码, 再重试", C_RED)
+        sys.exit(2)
 
     # 处理参数
     if args.command == "list":
         # list 命令: list <subcommand> [extra_arg] [all]
         if len(args.args) == 0:
-            color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events/funcs/objects)", C_RED)
+            color_print("错误: list 命令需要子类型 (widgets/windows/packages/examples/events/funcs/objects/pkg_funcs/pkg_doc)", C_RED)
             sys.exit(1)
         subcommand = args.args[0].lower()
         

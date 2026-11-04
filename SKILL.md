@@ -46,7 +46,7 @@ agent_created: false
 python scripts/download.py
 ```
 
-脚本会按 CNB → Gitee → GitCode → GitHub 顺序自动回退：每个平台先试 ZIP 归档，失败后（本机装有 git 时）改用 `git clone --depth 1`；Gitee / GitCode 只提供 git clone 通道。全部失败时，脚本会输出可选的 ZIP 地址与 git clone 命令。
+脚本会自动选择可用源下载两份源码。只有两份都获取成功才会替换 `source/`；任一失败则保留原有源码、输出手动获取方式并返回非零退出码。
 
 ### 下载失败？手动获取
 
@@ -78,7 +78,7 @@ source/
 
 ### Step 0：检查前置条件
 
-🔴 **CHECKPOINT**: 收到 xcgui 问题时，必须先确认 `source/` 目录存在（如不存在则执行 `python scripts/download.py`），然后至少执行一次 `search.py` 检索。不可跳过此步骤直接凭记忆回答。
+🔴 **CHECKPOINT**: 收到 xcgui 问题时，必须先确认 `source/xcgui/` 与 `source/xcgui-example/` 都存在且包含 `.go` 文件（缺失或为空则执行 `python scripts/download.py`）。不可跳过此步骤直接凭记忆回答。
 
 ### Step 1：确定搜索类型
 
@@ -92,11 +92,12 @@ source/
 | 查类型/结构体定义和字段 | `python scripts/search.py type <关键词>` | 会显示类型注释、定义及字段块 (struct/interface) |
 | 找示例参考 | `python scripts/search.py example <关键词>` | 搜 xcgui-example/ 全部示例 |
 | 根据示例名或包注释精准找示例 | `python scripts/search.py example_name <keyword>` | 会更精准 |
-| 不知道有什么元素对象 | `python scripts/search.py list widgets` | 列出所有可用元素对象和描述 |
-| 不知道有什么窗口对象 | `python scripts/search.py list windows` | 列出所有窗口对象和描述 |
+| 不知道有什么元素对象 | `python scripts/search.py list widgets` | 列出 `widget` 包所有公开控件及描述 |
+| 不知道有什么窗口对象 | `python scripts/search.py list windows` | 列出 `window` 包所有公开窗口对象及描述 |
 | 查看对象的所有事件 | `python scripts/search.py list events <对象名>` | 含继承链上的所有事件函数名 (含描述) |
-| 查看对象的所有方法 | `python scripts/search.py list funcs <对象名>` | 含继承链上的所有方法名(含事件) |
-| 了解项目结构 | `python scripts/search.py list packages` | 列出所有包和文件数 (含描述) |
+| 查看对象的所有方法 | `python scripts/search.py list funcs <对象名>` | 含继承链上的所有方法名(含事件)；同名对象可用 `包名.对象名` 指定（如 `app.App`、`xc.POINT`），不指定时会自动选公开且方法最多的一个并提示其它候选 |
+| 了解项目结构 | `python scripts/search.py list packages` | 列出所有包和文件数 (包描述为首段摘要) |
+| 读某个包的完整文档 | `python scripts/search.py list pkg_doc <包名>` | 输出该包 `doc.go` 的完整 `// Package` 注释（保留 Markdown 标题与代码块），如 `list pkg_doc wapi/d2d`；也可只写末段包名 `svgp` |
 | 查看所有示例 | `python scripts/search.py list examples` | 列出所有示例 (含描述) |
 | 不知道包里有什么对象 | `python scripts/search.py list objects <包名>` | 列出包内所有公开对象 (含描述) |
 | 不知道包里有什么非对象函数, 比如构造函数 | `python scripts/search.py list pkg_funcs <包名>` | 列出包内所有公开的包级函数（非方法，无接收者） |
@@ -127,8 +128,9 @@ source/
 | 触发条件 | 一线修复 | 仍失败兜底 |
 |----------|----------|-----------|
 | `python scripts/download.py` 报错 | 检查 Python 是否安装（需 ≥3.7），重试 | 从 py 脚本输出中获取下载链接，告知用户手动下载 |
-| 下载后 `source/` 目录为空 | 检查网络连接，重试一次 | 告知用户手动下载 ZIP 并解压到 `source/` 目录 |
-| `source/` 存在但缺子目录（如只有 xcgui 无 xcgui-example） | 重新执行 download.py | 告知用户缺失的具体目录名，请求手动补充 |
+| 脚本返回非零退出码 / 提示获取未全部成功 | 检查网络连接，重跑一次（原有 `source/` 会保留） | 按脚本输出的地址手动补充缺失的仓库 |
+| `source/` 目录为空或缺少某个子目录（如只有 xcgui 无 xcgui-example） | 重新执行 download.py | 告知用户缺失的具体目录名，请求手动补充 |
+| `search.py` 提示源码目录缺失或不完整 | 执行 `python scripts/download.py` | 手动下载 ZIP 解压到 `source/`，确认两个子目录都含 `.go` 文件 |
 
 ### 2. 源码搜索失败
 

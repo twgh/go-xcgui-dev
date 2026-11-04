@@ -4,6 +4,7 @@
 
 xcgui 的最新 tag 依次从 Gitee / GitCode / CNB / GitHub 动态获取,
 任一源失败自动回退到下一个; GitHub 直连排在整条回退链的最后.
+默认只取正式版 tag, 选定后还会校验首选归档平台 (CNB) 是否已同步该 tag.
 若所有 tags API 均失败, 本机有 git 时再走一轮 git ls-remote 兜底
 (Gitee / GitCode / GitHub, GitHub 走代理且直连排最后).
 源码按 CNB -> Gitee -> GitCode -> GitHub 的平台顺序获取, 每平台先归档 ZIP 再 git clone;
@@ -11,6 +12,9 @@ xcgui 的最新 tag 依次从 Gitee / GitCode / CNB / GitHub 动态获取,
 Gitee / GitCode 的归档 ZIP 需登录, 故只提供 git clone 通道.
 GitHub 归档下载使用 ghfast / ghproxy 代理加速, CNB 不走代理.
 解压兼容两种归档结构: CNB 是扁平 ZIP, GitHub 带统一顶层目录.
+
+源码先下载到临时目录, 两个仓库都成功后才整体替换 source/;
+任一失败则保留原有源码并返回非零退出码, 避免断网时清空本地源码.
 """
 
 import io
@@ -96,7 +100,15 @@ TAGS_PER_PAGE = 100
 MAX_TAG_PAGES = 20
 # 匹配 v1.4.3 / 1.4.3 / v1.4.3-1, 排除无法解析版本的 tag
 VERSION_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(.*)$")
+# README.md 中的 release-x.y.z 版本标识, 用于校验下载到的源码版本
+RELEASE_VERSION_RE = re.compile(r"release-(\d+\.\d+\.\d+)", re.I)
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+# 单通道超时 (秒). 候选链较长, 避免个别不可达地址拖到几十分钟.
+TAG_API_TIMEOUT = 8
+GIT_LS_REMOTE_TIMEOUT = 15
+HTTP_TIMEOUT = 30
+GIT_CLONE_TIMEOUT = 90
 
 # 源码获取平台, 按优先级排列. 字段说明:
 #   archive      : xcgui 归档前缀, 拼接 /tags/{tag}.zip 或 /heads/main.zip; None 表示不可用
@@ -147,7 +159,7 @@ SOURCE_PLATFORMS = [
 def tag_sort_key(tag_name):
     """把 tag 名转为可比较的排序键, 非版本 tag 返回 None.
 
-    正式版排在带后缀的预发布版之前: (版本号, 1/0, 后缀)
+    同版本号下正式版排在预发布版之前: (版本号, 1/0, 后缀)
     """
     m = VERSION_TAG_RE.match(tag_name)
     if not m:
@@ -157,15 +169,25 @@ def tag_sort_key(tag_name):
     return (version, 0 if suffix else 1, suffix)
 
 
-def pick_latest_tag(names):
-    """从 tag 名列表中选出版本号最大的一个, 无有效 tag 返回空字符串."""
+def pick_latest_tag(names, stable_only=True):
+    """从 tag 名列表中选出版本号最大的一个, 无有效 tag 返回空字符串.
+
+    默认只取正式版 (无后缀) tag, 避免 v1.5.0-beta 这类预发布版盖过 v1.4.3 正式版;
+    若远端只有预发布 tag, 则退回其中版本号最大的一个, 保证仍有可用 ref.
+    """
     candidates = []
     for name in names:
         name = name.strip()
         key = tag_sort_key(name)
         if key is not None:
             candidates.append((key, name))
-    return max(candidates)[1] if candidates else ""
+    if not candidates:
+        return ""
+    if stable_only:
+        stable = [item for item in candidates if not item[0][2]]
+        if stable:
+            candidates = stable
+    return max(candidates)[1]
 
 
 def fetch_tag_names(api_url, proxy_prefix=""):
@@ -177,7 +199,7 @@ def fetch_tag_names(api_url, proxy_prefix=""):
             url = proxy_prefix + url
         try:
             req = urllib.request.Request(url, headers=REQUEST_HEADERS)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=TAG_API_TIMEOUT) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             print(f"    请求失败 (第 {page} 页): {e}")
@@ -199,24 +221,26 @@ def git_env():
     return env
 
 
-def fetch_tag_names_via_git(repo_urls):
+def fetch_tag_names_via_git(repo_urls, quiet=False):
     """用 git ls-remote --tags 匿名列出远端 tag, 需要本机安装 git; 失败返回 None.
 
     repo_urls 可为单个字符串或地址列表 (代理优先, 直连兜底), 逐个尝试.
     CNB 的 OpenAPI 需要 Bearer token, 但 git 协议可匿名读取, 故用它作为 tag 源;
     tags API 全部不可用时, Gitee / GitCode / GitHub 也用同样的方式兜底.
+    quiet=True 时只打印失败原因 (用于同步校验, 避免刷屏).
     """
     if isinstance(repo_urls, str):
         repo_urls = [repo_urls]
     for repo_url in repo_urls:
-        print(f"    git ls-remote 地址: {repo_url}")
+        if not quiet:
+            print(f"    git ls-remote 地址: {repo_url}")
         try:
             result = subprocess.run(
                 ["git", "ls-remote", "--tags", repo_url],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=20,
+                timeout=GIT_LS_REMOTE_TIMEOUT,
                 env=git_env(),
             )
         except Exception as e:
@@ -241,7 +265,7 @@ def fetch_tag_names_via_git(repo_urls):
     return None
 
 
-def get_latest_xcgui_tag():
+def _get_latest_xcgui_tag_raw():
     """按 TAG_SOURCES 顺序获取最新 tag, 全部失败返回空字符串.
 
     每个源可能对应多个访问方式 (不同代理 / git 协议), 逐个尝试;
@@ -301,6 +325,46 @@ def get_latest_xcgui_tag():
     return ""
 
 
+def _bare_tag(name):
+    """去掉 tag 名开头的 v, 便于跨平台比较 v1.4.3 与 1.4.3."""
+    return name[1:] if name.startswith("v") else name
+
+
+def reconcile_tag_with_source(tag, repo_url=CNB_XCGUI_REPO, platform_name="CNB"):
+    """校验选出的 tag 在首选归档平台也存在, 平台镜像滞后时改用该平台最新正式 tag.
+
+    tag 通常来自 Gitee, 但源码 ZIP 优先从 CNB 下载; 若 CNB 尚未同步该 tag,
+    ZIP 会 404 并白白走一轮回退. 这里提前对齐, 查不到 CNB tag 列表时保持原值
+    (归档失败依旧有 PK 校验与多平台回退兜底).
+    若平台使用不同的 v 前缀, 返回平台上的实际 tag 名, 保证拼出的归档地址有效.
+    """
+    if not tag or not has_git():
+        return tag
+    print(f"  校验 {platform_name} 是否已同步 {tag} ...")
+    names = fetch_tag_names_via_git(repo_url, quiet=True)
+    if not names:
+        print(f"  {platform_name} tag 列表不可用, 保持 {tag} (归档失败会自动回退其它平台)")
+        return tag
+    matched = next((n for n in names if _bare_tag(n) == _bare_tag(tag)), None)
+    if matched:
+        print(f"  {platform_name} 已同步 {matched}")
+        return matched
+    fallback = pick_latest_tag(names)
+    if not fallback:
+        print(f"  {platform_name} 没有可解析的版本 tag, 保持 {tag}")
+        return tag
+    print(f"  警告: {platform_name} 尚无 {tag} (镜像可能滞后), 改用 {platform_name} 最新正式 tag {fallback}")
+    return fallback
+
+
+def get_latest_xcgui_tag():
+    """获取最新正式 tag, 并与首选归档平台同步后返回; 全部失败返回空字符串."""
+    tag = _get_latest_xcgui_tag_raw()
+    if not tag:
+        return ""
+    return reconcile_tag_with_source(tag)
+
+
 def build_download_url(original_url, proxy_url):
     """构建下载 URL, 代理方式是在原始 URL 前加上代理地址."""
     if not proxy_url:
@@ -322,7 +386,7 @@ def download_file_with_proxies(original_url, desc="", proxies=None):
 
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
                 data = resp.read()
                 print(f"  下载完成, 大小: {len(data)} 字节")
                 return data
@@ -382,7 +446,7 @@ def clone_repo(repo_urls, ref, source_dir, name):
                     text=True,
                     encoding="utf-8",
                     errors="replace",
-                    timeout=180,
+                    timeout=GIT_CLONE_TIMEOUT,
                     env=git_env(),
                 )
             except Exception as e:
@@ -460,7 +524,33 @@ def build_download_candidates(tag):
     return xcgui, example
 
 
-def fetch_repo_source(candidates, name, source_dir):
+def report_source_version(source_path, expected_tag):
+    """读取 README.md 中的 release-x.y.z 版本号, 与选定 tag 比对并提示镜像滞后.
+
+    仅用于提示, 不否决已下载成功的源码 (README 格式变化时无从校验).
+    """
+    if not expected_tag:
+        return
+    m = VERSION_TAG_RE.match(expected_tag)
+    expected = ".".join(m.groups()[:3]) if m else ""
+    readme = os.path.join(source_path, "README.md")
+    actual = ""
+    try:
+        with open(readme, "r", encoding="utf-8", errors="replace") as f:
+            hit = RELEASE_VERSION_RE.search(f.read())
+            if hit:
+                actual = hit.group(1)
+    except OSError:
+        pass
+    if not actual:
+        print("  源码版本: 未能从 README.md 提取 release-x.y.z, 跳过版本校验")
+        return
+    print(f"  源码版本: {actual} (README.md), 选定 tag: {expected_tag}")
+    if expected and actual != expected:
+        print(f"  警告: 归档内版本 {actual} 与 tag {expected} 不一致, 平台镜像可能滞后")
+
+
+def fetch_repo_source(candidates, name, source_dir, expected_tag=""):
     """按候选顺序获取源码到 source_dir/name, 返回 (是否成功, 最后尝试的说明)."""
     last = ""
     for desc, kind, payload in candidates:
@@ -470,7 +560,12 @@ def fetch_repo_source(candidates, name, source_dir):
             url, proxies = payload
             data = download_file_with_proxies(url, desc=desc, proxies=proxies)
             if data and data[:2] == b"PK":
-                extract_zip(data, source_dir, name)
+                try:
+                    final_path = extract_zip(data, source_dir, name)
+                except (zipfile.BadZipFile, OSError) as e:
+                    print(f"  解压失败: {e}, 尝试下一个候选")
+                    continue
+                report_source_version(final_path, expected_tag)
                 return True, desc
             if data:
                 print("  返回内容不是 ZIP (可能被拦截或为错误页), 尝试下一个候选")
@@ -479,6 +574,7 @@ def fetch_repo_source(candidates, name, source_dir):
         elif kind == "git":
             repo_urls, ref = payload
             if clone_repo(repo_urls, ref, source_dir, name):
+                report_source_version(os.path.join(source_dir, name), expected_tag)
                 return True, desc
             print(f"  {desc} 失败, 尝试下一个候选")
     return False, last
@@ -544,22 +640,62 @@ def extract_zip(zip_data, extract_to, top_dir_name):
             shutil.rmtree(staging, ignore_errors=True)
 
 
+def _cleanup_stale_staging(project_root):
+    """清理上次异常中断留下的临时下载目录; 旧源码备份保留并提示, 不自动删除."""
+    for entry in os.listdir(project_root):
+        path = os.path.join(project_root, entry)
+        if not os.path.isdir(path):
+            continue
+        if entry.startswith("_source_stage_"):
+            shutil.rmtree(path, ignore_errors=True)
+        elif entry.startswith("_source_old_"):
+            print(f"发现上次残留的源码备份: {path} (确认无需后可手动删除)")
+
+
+def _source_has_content(path):
+    """目录是否含至少一个 .go 文件 (判断是否存在值得保留的旧源码)."""
+    if not os.path.isdir(path):
+        return False
+    for _root, _dirs, files in os.walk(path):
+        if any(f.endswith(".go") for f in files):
+            return True
+    return False
+
+
+def replace_source_dir(work_dir, source_dir, project_root):
+    """用 staging 目录原子替换 source 目录; 失败时恢复旧目录.
+
+    旧目录先改名为备份, 再把 staging 改名为 source, 最后删除备份.
+    任何一步异常都不直接删除旧源码, 便于人工找回.
+    """
+    backup = ""
+    if os.path.isdir(source_dir):
+        backup = tempfile.mkdtemp(prefix="_source_old_", dir=project_root)
+        os.rmdir(backup)
+        os.replace(source_dir, backup)
+    try:
+        os.replace(work_dir, source_dir)
+    except Exception:
+        if backup and os.path.isdir(backup):
+            os.replace(backup, source_dir)
+            backup = ""
+        raise
+    if backup:
+        shutil.rmtree(backup, ignore_errors=True)
+
+
 def main():
     # 获取脚本所在目录的父目录 (项目根目录)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     source_dir = os.path.join(project_root, "source")
 
-    # 创建 source 目录
     os.makedirs(source_dir, exist_ok=True)
     print(f"source 目录: {source_dir}")
-    
-    # 清空 source 目录
-    print("\n====== 清空 source 目录 ======")
-    clear_directory(source_dir)
-    print()
+    _cleanup_stale_staging(project_root)
 
     # 按 Gitee -> GitCode -> CNB -> GitHub 依次获取最新 tag (GitHub 直连排最后), 失败自动回退
+    print("\n====== 获取最新版本 tag ======")
     xcgui_tag = get_latest_xcgui_tag()
     if xcgui_tag:
         print(f"xcgui 最新 tag: {xcgui_tag}")
@@ -568,27 +704,64 @@ def main():
 
     xcgui_candidates, example_candidates = build_download_candidates(xcgui_tag)
 
-    # 记录下载失败的仓库
+    # 先下载到临时目录: 两个仓库都成功才整体替换, 任一失败都保留原有源码
+    work_dir = tempfile.mkdtemp(prefix="_source_stage_", dir=project_root)
+    print(f"临时下载目录: {work_dir}")
+    succeeded: list[str] = []
     failed_repos = []
+    result = 1
 
-    for name, candidates in (
-        ("xcgui", xcgui_candidates),
-        ("xcgui-example", example_candidates),
-    ):
-        print(f"\n====== 处理 {name} ======")
-        ok, used = fetch_repo_source(candidates, name, source_dir)
-        if not ok:
-            print(f"{name} 获取失败 (最后尝试: {used})")
-            failed_repos.append((name, candidates))
+    try:
+        for name, candidates, expected in (
+            ("xcgui", xcgui_candidates, xcgui_tag),
+            ("xcgui-example", example_candidates, ""),
+        ):
+            print(f"\n====== 处理 {name} ======")
+            ok, used = fetch_repo_source(candidates, name, work_dir, expected_tag=expected)
+            if ok:
+                succeeded.append(name)
+            else:
+                print(f"{name} 获取失败 (最后尝试: {used})")
+                failed_repos.append((name, candidates))
 
-    # 打印最终结果
+        # staging 中理论上只有两个目标目录, 保险起见清掉其它残留
+        for entry in os.listdir(work_dir):
+            if entry in ("xcgui", "xcgui-example"):
+                continue
+            path = os.path.join(work_dir, entry)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                os.remove(path)
+
+        if len(succeeded) == 2:
+            try:
+                replace_source_dir(work_dir, source_dir, project_root)
+            except Exception as e:
+                print(f"替换 source 目录失败: {e}; 原有源码已保留")
+            else:
+                work_dir = ""  # 已被改名为 source, 不能再删除
+                print("source 目录已整体更新")
+                result = 0
+        elif succeeded and not _source_has_content(source_dir):
+            # 首次下载且没有旧源码, 允许只安装成功的部分
+            for name in succeeded:
+                dst = os.path.join(source_dir, name)
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst, ignore_errors=True)
+                shutil.move(os.path.join(work_dir, name), dst)
+            print("首次下载, 已安装获取成功的部分 (另一部分仍需手动补充)")
+        else:
+            print("本次未更新任何源码, 保留原有 source 目录 (避免新旧版本混用)")
+    finally:
+        if work_dir and os.path.isdir(work_dir):
+            shutil.rmtree(work_dir, ignore_errors=True)
+
     print("\n==============================")
-    total = 2  # xcgui 和 xcgui-example
-    success = total - len(failed_repos)
-    if not failed_repos:
+    if result == 0:
         print("所有操作完成!")
     else:
-        print(f"部分源码获取失败 ({success}/{total} 成功)")
+        print(f"源码获取未全部成功 ({len(succeeded)}/2 成功), 已保留原有源码")
         print(f"\n你可以手动获取以下源码并放到: {os.path.abspath(source_dir)}")
         for name, candidates in failed_repos:
             print(f"  {name} 可选获取方式:")
@@ -603,7 +776,8 @@ def main():
             print(f"    最终目录名应为: {name}")
 
     print(f"\n当前 source 目录内容: {os.listdir(source_dir)}")
+    return result
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

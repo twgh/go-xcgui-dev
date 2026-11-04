@@ -1,4 +1,4 @@
-# go-xcgui-dev 1.2.0
+# go-xcgui-dev 1.3.0
 
 Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开发，直接避免 AI 产生幻觉。
 
@@ -26,8 +26,7 @@ Go xcgui（炫彩界面库）开发助手技能。用于 Windows 桌面应用开
 
 ```
 请使用 xcgui 中的 WebView 创建一个现代桌面应用
-请使用 xcgui 封装一个创建 Win11 风格按钮的类
-请使用 xcgui 封装一个创建 Win11 风格编辑框的类
+请使用 xcgui 封装一个 Win11 风格按钮的类
 请查找一下 xcgui 中的窗口置顶函数
 ```
 
